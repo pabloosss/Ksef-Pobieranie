@@ -2,8 +2,8 @@ import os
 import re
 import sys
 import time
-import sqlite3
 import zipfile
+import traceback
 import subprocess
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -71,12 +71,27 @@ def open_in_file_manager(path):
         raise RuntimeError(f"Nie udało się otworzyć folderu: {path}")
 
 
+def write_crash_log(base_dir, exc):
+    try:
+        os.makedirs(base_dir, exist_ok=True)
+        path = os.path.join(base_dir, "crash_log.txt")
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write("=" * 70 + "\n")
+            handle.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
+            handle.write(str(exc) + "\n\n")
+            handle.write(traceback.format_exc())
+            handle.write("\n")
+        return path
+    except Exception:
+        return None
+
+
 class KsefApp:
     def __init__(self, root):
         self.root = root
         self.root.title(APP_TITLE)
-        self.root.geometry("1240x860")
-        self.root.minsize(1160, 780)
+        self.root.geometry("1180x840")
+        self.root.minsize(1100, 760)
         self.root.configure(bg="#edf2f7")
 
         self.driver = None
@@ -97,118 +112,18 @@ class KsefApp:
         self.base_download_dir = os.path.join(self.base_dir, "pobrane_fv")
         os.makedirs(self.base_download_dir, exist_ok=True)
 
-        self.registry_path = os.path.join(self.base_dir, "rejestr_pobran.sqlite")
-        self.init_db()
-
         self.count_var = tk.StringVar(value="10")
         self.step_var = tk.StringVar(value="Status: gotowe")
         self.result_count_var = tk.StringVar(value="Wynik: nie sprawdzono")
         self.found_var = tk.StringVar(value="0")
         self.downloaded_var = tk.StringVar(value="0")
-        self.skipped_var = tk.StringVar(value="0")
-        self.skip_duplicates_var = tk.BooleanVar(value=True)
 
         self.last_total_count = 0
-        self.last_new_count = 0
 
         self.setup_style()
         self.build_ui()
         self.animate_progress()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-
-    # =========================
-    # DB
-    # =========================
-    def create_tables(self, conn):
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS download_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                folder_name TEXT NOT NULL,
-                downloaded_at TEXT NOT NULL,
-                requested_count INTEGER,
-                downloaded_count INTEGER,
-                skipped_count INTEGER
-            )
-            """
-        )
-
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS downloaded_items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                item_key TEXT NOT NULL UNIQUE,
-                row_text TEXT,
-                downloaded_at TEXT NOT NULL,
-                session_folder TEXT
-            )
-            """
-        )
-
-        conn.commit()
-
-    def init_db(self):
-        try:
-            with sqlite3.connect(self.registry_path) as conn:
-                self.create_tables(conn)
-        except sqlite3.DatabaseError:
-            bad_path = self.registry_path + ".bak"
-            safe_remove(bad_path)
-            try:
-                if os.path.exists(self.registry_path):
-                    os.rename(self.registry_path, bad_path)
-            except Exception:
-                pass
-
-            with sqlite3.connect(self.registry_path) as conn:
-                self.create_tables(conn)
-
-    def add_session(self, folder_name, requested_count, downloaded_count, skipped_count):
-        with sqlite3.connect(self.registry_path) as conn:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO download_sessions (folder_name, downloaded_at, requested_count, downloaded_count, skipped_count)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    folder_name,
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    requested_count,
-                    downloaded_count,
-                    skipped_count,
-                ),
-            )
-            conn.commit()
-
-    def add_downloaded_item(self, item_key, row_text, session_folder):
-        with sqlite3.connect(self.registry_path) as conn:
-            cur = conn.cursor()
-            try:
-                cur.execute(
-                    """
-                    INSERT INTO downloaded_items (item_key, row_text, downloaded_at, session_folder)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (
-                        item_key,
-                        row_text,
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        session_folder,
-                    ),
-                )
-                conn.commit()
-            except sqlite3.IntegrityError:
-                pass
-
-    def is_duplicate(self, item_key):
-        with sqlite3.connect(self.registry_path) as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT 1 FROM downloaded_items WHERE item_key = ? LIMIT 1", (item_key,))
-            result = cur.fetchone()
-        return result is not None
 
     # =========================
     # UI
@@ -264,8 +179,7 @@ class KsefApp:
         stats_row.pack(fill="x", pady=(0, 12))
 
         self.make_stat_card(stats_row, "Wszystkich FV", self.found_var, "#0f4c81").pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.make_stat_card(stats_row, "Pobrane", self.downloaded_var, "#166534").pack(side="left", fill="x", expand=True, padx=8)
-        self.make_stat_card(stats_row, "Pominięte / duplikaty", self.skipped_var, "#b45309").pack(side="left", fill="x", expand=True, padx=(8, 0))
+        self.make_stat_card(stats_row, "Pobrane", self.downloaded_var, "#166534").pack(side="left", fill="x", expand=True, padx=(8, 0))
 
         body = tk.Frame(main, bg="#edf2f7")
         body.pack(fill="both", expand=True)
@@ -309,14 +223,6 @@ class KsefApp:
             justify="center",
         )
         self.count_entry.pack(fill="x", pady=(6, 12), ipady=6)
-
-        checkbox_wrap = tk.Frame(left, bg="#f8fafc", bd=1, relief="solid", padx=10, pady=10)
-        checkbox_wrap.pack(fill="x", pady=(0, 12))
-        ttk.Checkbutton(
-            checkbox_wrap,
-            text="Pomijaj już pobrane FV",
-            variable=self.skip_duplicates_var,
-        ).pack(anchor="w")
 
         ttk.Button(left, text="Pobierz", style="Danger.TButton", command=self.download_invoices).pack(fill="x")
 
@@ -382,7 +288,6 @@ class KsefApp:
         self.status_box.insert("end", "[INFO] Silnik: Selenium + Microsoft Edge.\n")
         self.status_box.insert("end", f"[INFO] Folder programu: {self.base_dir}\n")
         self.status_box.insert("end", f"[INFO] Folder pobierania: {self.base_download_dir}\n")
-        self.status_box.insert("end", f"[INFO] Rejestr pobrań: {self.registry_path}\n")
         self.status_box.configure(state="disabled")
 
         footer = tk.Frame(main, bg="#edf2f7")
@@ -527,6 +432,24 @@ class KsefApp:
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie udało się otworzyć folderu.\n\n{e}")
 
+    def wait_for_rows(self, timeout=15):
+        selectors = [
+            (By.CSS_SELECTOR, "tbody tr"),
+            (By.CSS_SELECTOR, "table tbody tr"),
+            (By.CSS_SELECTOR, "[role='row']"),
+        ]
+        end_time = time.time() + timeout
+        while time.time() < end_time:
+            for by, value in selectors:
+                try:
+                    found = self.driver.find_elements(by, value)
+                    if found:
+                        return True
+                except Exception:
+                    pass
+            time.sleep(0.3)
+        return False
+
     # =========================
     # Selenium
     # =========================
@@ -547,6 +470,7 @@ class KsefApp:
         )
 
         driver = webdriver.Edge(options=options)
+        driver.implicitly_wait(2)
         driver.set_page_load_timeout(90)
         self.wait = WebDriverWait(driver, 20)
         return driver
@@ -644,6 +568,7 @@ class KsefApp:
         if not self.safe_click_candidates(candidates, timeout=2, wait_after=1.5):
             return False
 
+        self.wait_for_rows(timeout=8)
         for _ in range(10):
             time.sleep(0.4)
             after = self.get_page_signature()
@@ -665,6 +590,7 @@ class KsefApp:
             before = self.get_page_signature()
             if not self.safe_click_candidates(prev_candidates, timeout=1, wait_after=1.0):
                 break
+            self.wait_for_rows(timeout=6)
             after = self.get_page_signature()
             if after == before:
                 break
@@ -674,7 +600,8 @@ class KsefApp:
         seen_page_signatures = set()
 
         self.go_to_first_page()
-        time.sleep(1.0)
+        self.wait_for_rows(timeout=10)
+        time.sleep(0.8)
         pages_scanned = 0
 
         while pages_scanned < MAX_SCAN_PAGES:
@@ -697,7 +624,8 @@ class KsefApp:
             self.log(f"[INFO] Osiągnięto limit bezpieczeństwa: {MAX_SCAN_PAGES} stron.")
 
         self.go_to_first_page()
-        time.sleep(1.0)
+        self.wait_for_rows(timeout=10)
+        time.sleep(0.8)
         return all_rows
 
     def click_checkbox(self, checkbox):
@@ -756,13 +684,12 @@ class KsefApp:
         os.makedirs(session_dir, exist_ok=True)
         return session_name, session_dir
 
-    def write_session_info(self, session_dir, requested_count, downloaded_count, skipped_count):
+    def write_session_info(self, session_dir, requested_count, downloaded_count):
         info_path = os.path.join(session_dir, "info.txt")
         content = (
             f"Data pobrania: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"Żądana liczba FV: {requested_count}\n"
             f"Pobrano: {downloaded_count}\n"
-            f"Pominięto: {skipped_count}\n"
         )
         with open(info_path, "w", encoding="utf-8") as handle:
             handle.write(content)
@@ -861,19 +788,23 @@ class KsefApp:
         except WebDriverException as e:
             self.stop_loading("Błąd")
             self.log(f"[BŁĄD] Nie udało się otworzyć Edge: {e}")
+            log_path = write_crash_log(self.base_dir, e)
+            extra = f"\n\nLog błędu: {log_path}" if log_path else ""
             messagebox.showerror(
                 "Błąd Edge",
                 "Nie udało się uruchomić Microsoft Edge.\n\n"
                 "Sprawdź, czy Microsoft Edge jest zainstalowany i zaktualizowany.\n"
-                "Jeżeli to świeży komputer, najpierw zainstaluj zależności z requirements.txt albo uruchom build_exe.bat na komputerze roboczym.\n\n"
-                f"Szczegóły:\n{e}"
+                "Jeżeli to świeży komputer, uruchom najpierw build_exe.bat na komputerze roboczym albo zainstaluj zależności z requirements.txt."
+                + extra
             )
             self.driver = None
             self.wait = None
         except Exception as e:
             self.stop_loading("Błąd")
             self.log(f"[BŁĄD] Nie udało się otworzyć przeglądarki: {e}")
-            messagebox.showerror("Błąd", f"Nie udało się otworzyć przeglądarki.\n\n{e}")
+            log_path = write_crash_log(self.base_dir, e)
+            extra = f"\n\nLog błędu: {log_path}" if log_path else ""
+            messagebox.showerror("Błąd", f"Nie udało się otworzyć przeglądarki.\n\n{e}{extra}")
             self.driver = None
             self.wait = None
 
@@ -889,44 +820,22 @@ class KsefApp:
             all_rows = self.scan_all_pages()
             total_count = len(all_rows)
 
-            skipped_count = 0
-            new_count = total_count
-
-            if self.skip_duplicates_var.get():
-                filtered = []
-                total_items = len(all_rows) if all_rows else 1
-                for idx, item in enumerate(all_rows, start=1):
-                    self.update_progress(idx, total_items, "Sprawdzanie duplikatów")
-                    if self.is_duplicate(item["row_id"]):
-                        skipped_count += 1
-                    else:
-                        filtered.append(item)
-                new_count = len(filtered)
-
             self.last_total_count = total_count
-            self.last_new_count = new_count
-
             self.found_var.set(str(total_count))
             self.downloaded_var.set("0")
-            self.skipped_var.set(str(skipped_count))
-            self.result_count_var.set(
-                f"Wynik: wszystkich FV = {total_count}, nowych = {new_count}, duplikatów = {skipped_count}"
-            )
+            self.result_count_var.set(f"Wynik: wszystkich FV = {total_count}")
 
             self.stop_loading("Sprawdzanie zakończone")
             self.log(f"[OK] Wszystkich FV: {total_count}")
-            self.log(f"[OK] Nowych FV: {new_count}")
-            self.log(f"[OK] Duplikatów: {skipped_count}")
 
-            messagebox.showinfo(
-                "Wynik",
-                f"Wszystkich FV: {total_count}\nNowych FV: {new_count}\nDuplikatów: {skipped_count}"
-            )
+            messagebox.showinfo("Wynik", f"Wszystkich FV: {total_count}")
 
         except Exception as e:
             self.stop_loading("Błąd liczenia")
             self.log(f"[BŁĄD] Nie udało się sprawdzić ilości FV: {e}")
-            messagebox.showerror("Błąd", f"Nie udało się sprawdzić ilości FV.\n\n{e}")
+            log_path = write_crash_log(self.base_dir, e)
+            extra = f"\n\nLog błędu: {log_path}" if log_path else ""
+            messagebox.showerror("Błąd", f"Nie udało się sprawdzić ilości FV.\n\n{e}{extra}")
 
     def download_invoices(self):
         try:
@@ -944,15 +853,14 @@ class KsefApp:
                 messagebox.showwarning("Uwaga", "Liczba FV musi być większa od 0.")
                 return
 
-            if self.last_total_count == 0 and self.last_new_count == 0:
+            if self.last_total_count == 0:
                 messagebox.showwarning("Uwaga", "Najpierw kliknij 'Sprawdź ilość FV'.")
                 return
 
-            limit = self.last_new_count if self.skip_duplicates_var.get() else self.last_total_count
-            if wanted > limit:
+            if wanted > self.last_total_count:
                 messagebox.showwarning(
                     "Za dużo FV",
-                    f"Chcesz pobrać {wanted} FV, a dostępnych po sprawdzeniu jest tylko {limit}."
+                    f"Chcesz pobrać {wanted} FV, a dostępnych po sprawdzeniu jest tylko {self.last_total_count}."
                 )
                 return
 
@@ -963,12 +871,12 @@ class KsefApp:
             self.log(f"[INFO] Folder sesji: {session_dir}")
 
             total_downloaded = 0
-            total_skipped = 0
             batch_number = 1
             batch_size = DEFAULT_BATCH_SIZE
 
             self.go_to_first_page()
-            time.sleep(1.0)
+            self.wait_for_rows(timeout=10)
+            time.sleep(0.8)
 
             seen_page_signatures = set()
 
@@ -988,11 +896,6 @@ class KsefApp:
                 for item in rows_data:
                     if len(selected_rows) >= target_on_this_page:
                         break
-
-                    if self.skip_duplicates_var.get() and self.is_duplicate(item["row_id"]):
-                        total_skipped += 1
-                        self.skipped_var.set(str(total_skipped))
-                        continue
 
                     if self.click_checkbox(item["checkbox"]):
                         selected_rows.append(item)
@@ -1022,18 +925,14 @@ class KsefApp:
                     else:
                         self.log("[INFO] Pobrany plik nie był ZIP-em.")
 
-                    for item in selected_rows:
-                        self.add_downloaded_item(item["row_id"], item["text"], session_name)
-
                     total_downloaded += len(selected_rows)
                     self.downloaded_var.set(str(total_downloaded))
-                    self.skipped_var.set(str(total_skipped))
                     self.update_progress(total_downloaded, wanted, "Pobieranie faktur")
                     self.log(f"[OK] Łącznie pobrano: {total_downloaded}/{wanted}")
                     batch_number += 1
                     time.sleep(1.2)
                 else:
-                    self.log("[INFO] Na tej stronie nie udało się zaznaczyć żadnej nowej partii.")
+                    self.log("[INFO] Na tej stronie nie udało się zaznaczyć partii do pobrania.")
 
                 if total_downloaded >= wanted:
                     break
@@ -1041,11 +940,10 @@ class KsefApp:
                 if not self.go_to_next_page():
                     break
 
-            self.write_session_info(session_dir, wanted, total_downloaded, total_skipped)
-            self.add_session(session_name, wanted, total_downloaded, total_skipped)
+            self.write_session_info(session_dir, wanted, total_downloaded)
 
             self.stop_loading("Gotowe")
-            self.log(f"[OK] Koniec. Pobrano: {total_downloaded}, pominięto: {total_skipped}")
+            self.log(f"[OK] Koniec. Pobrano: {total_downloaded}")
 
             if total_downloaded < wanted:
                 messagebox.showwarning(
@@ -1061,7 +959,9 @@ class KsefApp:
         except Exception as e:
             self.stop_loading("Błąd")
             self.log(f"[BŁĄD] Nie udało się wykonać pobierania: {e}")
-            messagebox.showerror("Błąd", f"Nie udało się wykonać pobierania.\n\n{e}")
+            log_path = write_crash_log(self.base_dir, e)
+            extra = f"\n\nLog błędu: {log_path}" if log_path else ""
+            messagebox.showerror("Błąd", f"Nie udało się wykonać pobierania.\n\n{e}{extra}")
 
     def on_close(self):
         try:
@@ -1073,6 +973,18 @@ class KsefApp:
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = KsefApp(root)
-    root.mainloop()
+    base_dir = resolve_base_dir()
+    try:
+        root = tk.Tk()
+        app = KsefApp(root)
+        root.mainloop()
+    except Exception as e:
+        log_path = write_crash_log(base_dir, e)
+        try:
+            messagebox.showerror(
+                "Błąd startu programu",
+                f"Program nie uruchomił się poprawnie.\n\n{e}\n\nLog błędu: {log_path}"
+            )
+        except Exception:
+            pass
+        raise
