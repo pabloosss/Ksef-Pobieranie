@@ -1,28 +1,80 @@
-
 import os
 import re
 import sys
 import time
 import sqlite3
 import zipfile
+import subprocess
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
 from pathlib import Path
 
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+APP_TITLE = "Program do pobierania FV KSeF - Emerlog"
+KSEF_URL = "https://ap.ksef.mf.gov.pl/web/invoice-list"
+DEFAULT_BATCH_SIZE = 10
+MAX_SCAN_PAGES = 300
+
+
+def safe_remove(path):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+
+
+def is_dir_writable(path):
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, ".write_test.tmp")
+        with open(probe, "w", encoding="utf-8") as handle:
+            handle.write("ok")
+        safe_remove(probe)
+        return True
+    except Exception:
+        return False
+
+
+def resolve_base_dir():
+    if getattr(sys, "frozen", False):
+        candidate = os.path.dirname(sys.executable)
+    else:
+        candidate = os.path.dirname(os.path.abspath(__file__))
+
+    if is_dir_writable(candidate):
+        return candidate
+
+    fallback = os.path.join(str(Path.home()), "Documents", "Ksef-Pobieranie")
+    os.makedirs(fallback, exist_ok=True)
+    return fallback
+
+
+def open_in_file_manager(path):
+    try:
+        os.startfile(path)
+        return
+    except Exception:
+        pass
+
+    try:
+        subprocess.Popen(["explorer", path])
+    except Exception:
+        raise RuntimeError(f"Nie udało się otworzyć folderu: {path}")
+
 
 class KsefApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Program do pobierania FV KSeF - Emerlog")
+        self.root.title(APP_TITLE)
         self.root.geometry("1240x860")
         self.root.minsize(1160, 780)
         self.root.configure(bg="#edf2f7")
@@ -41,11 +93,7 @@ class KsefApp:
         self.progress = None
         self.logo_image = None
 
-        if getattr(sys, "frozen", False):
-            self.base_dir = os.path.dirname(sys.executable)
-        else:
-            self.base_dir = os.path.dirname(os.path.abspath(__file__))
-
+        self.base_dir = resolve_base_dir()
         self.base_download_dir = os.path.join(self.base_dir, "pobrane_fv")
         os.makedirs(self.base_download_dir, exist_ok=True)
 
@@ -71,114 +119,95 @@ class KsefApp:
     # =========================
     # DB
     # =========================
+    def create_tables(self, conn):
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS download_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                folder_name TEXT NOT NULL,
+                downloaded_at TEXT NOT NULL,
+                requested_count INTEGER,
+                downloaded_count INTEGER,
+                skipped_count INTEGER
+            )
+            """
+        )
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS downloaded_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_key TEXT NOT NULL UNIQUE,
+                row_text TEXT,
+                downloaded_at TEXT NOT NULL,
+                session_folder TEXT
+            )
+            """
+        )
+
+        conn.commit()
+
     def init_db(self):
         try:
-            conn = sqlite3.connect(self.registry_path)
-            cur = conn.cursor()
-
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS download_sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    folder_name TEXT NOT NULL,
-                    downloaded_at TEXT NOT NULL,
-                    requested_count INTEGER,
-                    downloaded_count INTEGER,
-                    skipped_count INTEGER
-                )
-            """)
-
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS downloaded_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    item_key TEXT NOT NULL UNIQUE,
-                    row_text TEXT,
-                    downloaded_at TEXT NOT NULL,
-                    session_folder TEXT
-                )
-            """)
-
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(self.registry_path) as conn:
+                self.create_tables(conn)
         except sqlite3.DatabaseError:
             bad_path = self.registry_path + ".bak"
-            try:
-                if os.path.exists(bad_path):
-                    os.remove(bad_path)
-            except Exception:
-                pass
+            safe_remove(bad_path)
             try:
                 if os.path.exists(self.registry_path):
                     os.rename(self.registry_path, bad_path)
             except Exception:
                 pass
 
-            conn = sqlite3.connect(self.registry_path)
-            cur = conn.cursor()
-
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS download_sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    folder_name TEXT NOT NULL,
-                    downloaded_at TEXT NOT NULL,
-                    requested_count INTEGER,
-                    downloaded_count INTEGER,
-                    skipped_count INTEGER
-                )
-            """)
-
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS downloaded_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    item_key TEXT NOT NULL UNIQUE,
-                    row_text TEXT,
-                    downloaded_at TEXT NOT NULL,
-                    session_folder TEXT
-                )
-            """)
-
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(self.registry_path) as conn:
+                self.create_tables(conn)
 
     def add_session(self, folder_name, requested_count, downloaded_count, skipped_count):
-        conn = sqlite3.connect(self.registry_path)
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO download_sessions (folder_name, downloaded_at, requested_count, downloaded_count, skipped_count)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            folder_name,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            requested_count,
-            downloaded_count,
-            skipped_count
-        ))
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(self.registry_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO download_sessions (folder_name, downloaded_at, requested_count, downloaded_count, skipped_count)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    folder_name,
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    requested_count,
+                    downloaded_count,
+                    skipped_count,
+                ),
+            )
+            conn.commit()
 
     def add_downloaded_item(self, item_key, row_text, session_folder):
-        conn = sqlite3.connect(self.registry_path)
-        cur = conn.cursor()
-        try:
-            cur.execute("""
-                INSERT INTO downloaded_items (item_key, row_text, downloaded_at, session_folder)
-                VALUES (?, ?, ?, ?)
-            """, (
-                item_key,
-                row_text,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                session_folder
-            ))
-            conn.commit()
-        except sqlite3.IntegrityError:
-            pass
-        conn.close()
+        with sqlite3.connect(self.registry_path) as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO downloaded_items (item_key, row_text, downloaded_at, session_folder)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        item_key,
+                        row_text,
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        session_folder,
+                    ),
+                )
+                conn.commit()
+            except sqlite3.IntegrityError:
+                pass
 
     def is_duplicate(self, item_key):
-        conn = sqlite3.connect(self.registry_path)
-        cur = conn.cursor()
-        cur.execute("SELECT 1 FROM downloaded_items WHERE item_key = ? LIMIT 1", (item_key,))
-        result = cur.fetchone()
-        conn.close()
+        with sqlite3.connect(self.registry_path) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM downloaded_items WHERE item_key = ? LIMIT 1", (item_key,))
+            result = cur.fetchone()
         return result is not None
 
     # =========================
@@ -186,7 +215,10 @@ class KsefApp:
     # =========================
     def setup_style(self):
         self.style = ttk.Style()
-        self.style.theme_use("clam")
+        try:
+            self.style.theme_use("clam")
+        except Exception:
+            pass
 
         self.style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=11)
         self.style.configure("Secondary.TButton", font=("Segoe UI", 10, "bold"), padding=11)
@@ -202,7 +234,7 @@ class KsefApp:
             background="#d90429",
             bordercolor="#d9e2ec",
             lightcolor="#d90429",
-            darkcolor="#d90429"
+            darkcolor="#d90429",
         )
 
     def build_ui(self):
@@ -222,10 +254,10 @@ class KsefApp:
 
         tk.Label(
             left_header,
-            text="Program do pobierania FV KSeF - Emerlog",
+            text=APP_TITLE,
             font=("Segoe UI", 24, "bold"),
             bg="#0f172a",
-            fg="#ffffff"
+            fg="#ffffff",
         ).pack(anchor="w", pady=(12, 0))
 
         stats_row = tk.Frame(main, bg="#edf2f7")
@@ -274,7 +306,7 @@ class KsefApp:
             font=("Segoe UI", 15, "bold"),
             bd=1,
             relief="solid",
-            justify="center"
+            justify="center",
         )
         self.count_entry.pack(fill="x", pady=(6, 12), ipady=6)
 
@@ -283,7 +315,7 @@ class KsefApp:
         ttk.Checkbutton(
             checkbox_wrap,
             text="Pomijaj już pobrane FV",
-            variable=self.skip_duplicates_var
+            variable=self.skip_duplicates_var,
         ).pack(anchor="w")
 
         ttk.Button(left, text="Pobierz", style="Danger.TButton", command=self.download_invoices).pack(fill="x")
@@ -297,7 +329,7 @@ class KsefApp:
             left,
             mode="determinate",
             maximum=100,
-            style="Modern.Horizontal.TProgressbar"
+            style="Modern.Horizontal.TProgressbar",
         )
         self.progress.pack(fill="x")
 
@@ -311,7 +343,7 @@ class KsefApp:
             bg="#f8fafc",
             fg="#334155",
             wraplength=360,
-            justify="left"
+            justify="left",
         ).pack(anchor="w")
 
         tk.Label(
@@ -321,7 +353,7 @@ class KsefApp:
             bg="white",
             fg="#0f4c81",
             wraplength=370,
-            justify="left"
+            justify="left",
         ).pack(anchor="w", pady=(12, 0))
 
         top_center = tk.Frame(center, bg="white")
@@ -342,13 +374,15 @@ class KsefApp:
             relief="flat",
             wrap="word",
             padx=14,
-            pady=14
+            pady=14,
         )
         self.status_box.pack(fill="both", expand=True)
         self.status_box.configure(state="normal")
         self.status_box.insert("end", "[INFO] Aplikacja uruchomiona.\n")
         self.status_box.insert("end", "[INFO] Silnik: Selenium + Microsoft Edge.\n")
         self.status_box.insert("end", f"[INFO] Folder programu: {self.base_dir}\n")
+        self.status_box.insert("end", f"[INFO] Folder pobierania: {self.base_download_dir}\n")
+        self.status_box.insert("end", f"[INFO] Rejestr pobrań: {self.registry_path}\n")
         self.status_box.configure(state="disabled")
 
         footer = tk.Frame(main, bg="#edf2f7")
@@ -359,7 +393,7 @@ class KsefApp:
             text="Made by Paweł Ruchlicki",
             font=("Segoe UI", 10, "bold"),
             bg="#edf2f7",
-            fg="#475569"
+            fg="#475569",
         ).pack(anchor="e")
 
     def load_logo(self, parent):
@@ -469,7 +503,7 @@ class KsefApp:
         self.root.after(40, self.animate_progress)
 
     def normalize_text(self, text):
-        return re.sub(r"\s+", " ", text).strip()
+        return re.sub(r"\s+", " ", text or "").strip()
 
     def extract_item_key(self, text):
         text = self.normalize_text(text)
@@ -480,16 +514,16 @@ class KsefApp:
         ]
 
         for pattern in patterns:
-            m = re.search(pattern, text, re.IGNORECASE)
-            if m:
-                return m.group(1).lower()
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(1).lower()
 
         return text.lower()
 
     def open_download_folder(self):
         try:
             os.makedirs(self.base_download_dir, exist_ok=True)
-            os.startfile(self.base_download_dir)
+            open_in_file_manager(self.base_download_dir)
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie udało się otworzyć folderu.\n\n{e}")
 
@@ -500,25 +534,22 @@ class KsefApp:
         options = EdgeOptions()
         options.use_chromium = True
         options.add_argument("--start-maximized")
-        options.add_experimental_option("prefs", {
-            "download.default_directory": self.base_download_dir,
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "plugins.always_open_pdf_externally": True,
-        })
-        # Selenium Manager should resolve msedgedriver automatically
+        options.add_argument("--disable-notifications")
+        options.add_argument("--disable-popup-blocking")
+        options.add_experimental_option(
+            "prefs",
+            {
+                "download.default_directory": self.base_download_dir,
+                "download.prompt_for_download": False,
+                "download.directory_upgrade": True,
+                "plugins.always_open_pdf_externally": True,
+            },
+        )
+
         driver = webdriver.Edge(options=options)
         driver.set_page_load_timeout(90)
         self.wait = WebDriverWait(driver, 20)
         return driver
-
-    def safe_find(self, by, value, timeout=4):
-        try:
-            return WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located((by, value))
-            )
-        except Exception:
-            return None
 
     def safe_find_all(self, by, value):
         try:
@@ -534,9 +565,7 @@ class KsefApp:
                 )
                 self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
                 try:
-                    WebDriverWait(self.driver, timeout).until(
-                        EC.element_to_be_clickable((by, value))
-                    )
+                    WebDriverWait(self.driver, timeout).until(EC.element_to_be_clickable((by, value)))
                     el.click()
                 except Exception:
                     self.driver.execute_script("arguments[0].click();", el)
@@ -551,7 +580,7 @@ class KsefApp:
         try:
             self.driver.execute_cdp_cmd(
                 "Page.setDownloadBehavior",
-                {"behavior": "allow", "downloadPath": path}
+                {"behavior": "allow", "downloadPath": path},
             )
         except Exception:
             pass
@@ -577,19 +606,21 @@ class KsefApp:
                     continue
 
                 checkbox = None
-                cands = row.find_elements(By.CSS_SELECTOR, "input[type='checkbox'], [role='checkbox']")
-                if cands:
-                    checkbox = cands[0]
+                candidates = row.find_elements(By.CSS_SELECTOR, "input[type='checkbox'], [role='checkbox']")
+                if candidates:
+                    checkbox = candidates[0]
                 if checkbox is None:
                     continue
 
-                rows_data.append({
-                    "row": row,
-                    "text": text,
-                    "row_id": self.extract_item_key(text),
-                    "checkbox": checkbox,
-                    "index": i
-                })
+                rows_data.append(
+                    {
+                        "row": row,
+                        "text": text,
+                        "row_id": self.extract_item_key(text),
+                        "checkbox": checkbox,
+                        "index": i,
+                    }
+                )
             except Exception:
                 pass
 
@@ -646,7 +677,7 @@ class KsefApp:
         time.sleep(1.0)
         pages_scanned = 0
 
-        while True:
+        while pages_scanned < MAX_SCAN_PAGES:
             rows_data = self.get_current_page_rows()
             signature = self.get_page_signature()
 
@@ -662,6 +693,9 @@ class KsefApp:
             if not self.go_to_next_page():
                 break
 
+        if pages_scanned >= MAX_SCAN_PAGES:
+            self.log(f"[INFO] Osiągnięto limit bezpieczeństwa: {MAX_SCAN_PAGES} stron.")
+
         self.go_to_first_page()
         time.sleep(1.0)
         return all_rows
@@ -675,14 +709,17 @@ class KsefApp:
         methods = [
             lambda: checkbox.click(),
             lambda: ActionChains(self.driver).move_to_element(checkbox).click(checkbox).perform(),
-            lambda: self.driver.execute_script("""
+            lambda: self.driver.execute_script(
+                """
                 arguments[0].click();
                 if (arguments[0].type === 'checkbox') {
                     arguments[0].checked = true;
                     arguments[0].dispatchEvent(new Event('input', {bubbles:true}));
                     arguments[0].dispatchEvent(new Event('change', {bubbles:true}));
                 }
-            """, checkbox),
+                """,
+                checkbox,
+            ),
         ]
 
         for method in methods:
@@ -727,8 +764,8 @@ class KsefApp:
             f"Pobrano: {downloaded_count}\n"
             f"Pominięto: {skipped_count}\n"
         )
-        with open(info_path, "w", encoding="utf-8") as f:
-            f.write(content)
+        with open(info_path, "w", encoding="utf-8") as handle:
+            handle.write(content)
 
     def wait_for_new_download(self, folder, before_files, timeout=40):
         start = time.time()
@@ -748,12 +785,9 @@ class KsefApp:
     def maybe_extract_archive(self, save_path, session_dir):
         extracted = False
         if zipfile.is_zipfile(save_path):
-            with zipfile.ZipFile(save_path, "r") as zf:
-                zf.extractall(session_dir)
-            try:
-                os.remove(save_path)
-            except Exception:
-                pass
+            with zipfile.ZipFile(save_path, "r") as archive:
+                archive.extractall(session_dir)
+            safe_remove(save_path)
             extracted = True
         return extracted
 
@@ -773,7 +807,7 @@ class KsefApp:
                 ],
                 "fallback": [
                     (By.XPATH, "//*[contains(text(),'PDF')]"),
-                ]
+                ],
             }
         ]
 
@@ -814,7 +848,7 @@ class KsefApp:
             self.log("[INFO] Uruchamianie Edge...")
 
             self.driver = self.create_driver()
-            self.driver.get("https://ap.ksef.mf.gov.pl/web/invoice-list")
+            self.driver.get(KSEF_URL)
 
             self.stop_loading("Czekam na logowanie")
             self.log("[OK] KSeF otwarty w Edge.")
@@ -830,7 +864,8 @@ class KsefApp:
             messagebox.showerror(
                 "Błąd Edge",
                 "Nie udało się uruchomić Microsoft Edge.\n\n"
-                "Sprawdź, czy Edge jest zainstalowany.\n\n"
+                "Sprawdź, czy Microsoft Edge jest zainstalowany i zaktualizowany.\n"
+                "Jeżeli to świeży komputer, najpierw zainstaluj zależności z requirements.txt albo uruchom build_exe.bat na komputerze roboczym.\n\n"
                 f"Szczegóły:\n{e}"
             )
             self.driver = None
@@ -930,7 +965,7 @@ class KsefApp:
             total_downloaded = 0
             total_skipped = 0
             batch_number = 1
-            batch_size = 10
+            batch_size = DEFAULT_BATCH_SIZE
 
             self.go_to_first_page()
             time.sleep(1.0)
