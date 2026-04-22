@@ -5,7 +5,7 @@ echo =====================================
 echo KSeF - build EXE
 echo =====================================
 
-auto color 0A >nul 2>nul
+color 0A >nul 2>nul
 
 python --version >nul 2>nul
 if errorlevel 1 (
@@ -40,8 +40,20 @@ if errorlevel 1 goto :err
 
 echo.
 echo [OK] Gotowe.
-echo EXE znajdziesz tutaj:
+echo FINALNY PROGRAM jest tutaj:
 echo %cd%\dist\Ksef-Pobieranie.exe
+echo.
+echo Ten plik BAT tylko buduje EXE.
+echo Teraz otworze folder dist i uruchomie gotowy program.
+echo.
+
+if exist "%cd%\dist\Ksef-Pobieranie.exe" (
+    start "" explorer "%cd%\dist"
+    start "" "%cd%\dist\Ksef-Pobieranie.exe"
+) else (
+    echo [BLAD] Nie znaleziono gotowego EXE w folderze dist.
+)
+
 pause
 exit /b 0
 
