@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.spec
+build/
+dist/
+*.log
+*.tmp
+*.bak
+
+# lokalne dane programu
+pobrane_fv/
+rejestr_pobran.sqlite
+rejestr_pobran.sqlite.bak
+
+# virtualenv
+.venv/
+venv/
+env/
