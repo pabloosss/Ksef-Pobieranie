@@ -8,13 +8,8 @@ dist/
 *.log
 *.tmp
 *.bak
-
-# lokalne dane programu
 pobrane_fv/
-rejestr_pobran.sqlite
-rejestr_pobran.sqlite.bak
-
-# virtualenv
+crash_log.txt
 .venv/
 venv/
 env/
