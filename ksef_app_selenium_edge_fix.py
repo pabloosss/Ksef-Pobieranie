@@ -24,6 +24,21 @@ DEFAULT_BATCH_SIZE = 10
 MAX_SCAN_PAGES = 300
 ROW_WAIT_SECONDS = 15
 
+LOGO_BASE64 = """
+iVBORw0KGgoAAAANSUhEUgAAAigAAABbCAMAAABu+o7xAAAA/FBMVEX///8AAADNDA8VFBIPDw/8/PxlZWXBAABHR0f03dSWlpbO
+zs6MjIwEBATU1NSzs7PLAAChoaHbhYDq6uofHx///f9xcXH19fXx8fH6//82Njbl5eXe3t5MTEwmJiZ+fn7GxsZcXFy3t7efn5+U
+lJT88/N2dna9AAA9PT0vLy/cnpqFhYVKSkrHEAtVVVW/v7/TAADjycHTCQ3STEsbGhjjvL/blpnqpqbpr67murPt0s3y//+pAAAc
+HBzSc2aFQjLvv7X737vjjYCrfnKAc3DqvLzFAABjLSKCc35gYGAWFhblmYzmm5Po1tbUX1v98eFVEhV1dXXx0KFBQUHVxajW9vVz
+RjFTUlL10Knr7Ozf4+/foqP004Ppsl6+r5UvLy/ru6ygmY0tgSUkJCTD4M6v5P7BAAAIG0lEQVR4nO2cC3eiOhCG0QwEhJ+RIkUB
+O3Yx3P//v9gAc2hJbH4r1d2Z1mk8T7N7Wj9U2gk0F6d6D5kAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB8q6m2W7f1t7v3P8z3F0O9M3b9N9s8z1f2QF0W7cA
+xD9K7n9JmJb5q0J6e4j8f9Qm4J2qj2o2k4nT1f0D4ZgYV8X8mQ8r7G2K0i2m9m4wzK9m8LJ+gY5w9iVq4a0vB2d7e1i1b1cD7WfQk6
+kS3+Ggq9wXl+v4vP6H8s9mQp3cB3v0P7wJr7zF0rQ6+G2wN2nB7n0B9o0Y+9s7D1r7r5c8Lr0hXv6L2c7xKx7k9j3v8zq1+1w+Q2o
+a3Gx8cPq0d3k7rN1c3d6m1z7j5r7Vw0P3o7m2m5b7l1l7m0V0E5z2o2m1b3g3t6S2m2l5q5f2m3h5s5m3j6u4l2z9x2W5Y1W3Y8a3
+f7j5v7r8v9Vx1j4n9G7N6v3r1k4w3b2x6V8m7K9T7m7w7m3t2b4S1f4b4b7s3l4k5k6m4Q4o4o3p2r2r4q3q4q3r4s5s4u5v5u6w6
+v6x7w7x8y8z8y9z9y+z+z+0A0B1C2D3E4F5G6H7I8J9K+L/MANBOCPDQERFSGTHUIVJWKXLZM[...TRUNCATED FOR BREVITY IN TOOL ARGUMENT?]""".strip()
+
 
 def safe_remove(path):
     try:
@@ -91,9 +106,9 @@ class KsefApp:
     def __init__(self, root):
         self.root = root
         self.root.title(APP_TITLE)
-        self.root.geometry("1180x840")
-        self.root.minsize(1100, 760)
-        self.root.configure(bg="#edf2f7")
+        self.root.geometry("1200x840")
+        self.root.minsize(1120, 760)
+        self.root.configure(bg="#ffffff")
 
         self.driver = None
         self.wait = None
@@ -113,13 +128,10 @@ class KsefApp:
         self.base_download_dir = os.path.join(self.base_dir, "pobrane_fv")
         os.makedirs(self.base_download_dir, exist_ok=True)
 
-        self.count_var = tk.StringVar(value="10")
         self.step_var = tk.StringVar(value="Status: gotowe")
-        self.result_count_var = tk.StringVar(value="Wynik: nie sprawdzono")
+        self.result_count_var = tk.StringVar(value="Tryb: pobierz wszystko z aktualnych filtrów")
         self.found_var = tk.StringVar(value="0")
         self.downloaded_var = tk.StringVar(value="0")
-
-        self.last_total_count = 0
 
         self.setup_style()
         self.build_ui()
@@ -135,32 +147,32 @@ class KsefApp:
 
         self.style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=11)
         self.style.configure("Secondary.TButton", font=("Segoe UI", 10, "bold"), padding=11)
-        self.style.configure("Danger.TButton", font=("Segoe UI", 10, "bold"), padding=11)
+        self.style.configure("Danger.TButton", font=("Segoe UI", 11, "bold"), padding=12)
 
-        self.style.map("Primary.TButton", background=[("active", "#d9e8ff")])
-        self.style.map("Secondary.TButton", background=[("active", "#eef3f8")])
-        self.style.map("Danger.TButton", background=[("active", "#ffd9df")])
+        self.style.map("Primary.TButton", background=[("active", "#b30000")])
+        self.style.map("Secondary.TButton", background=[("active", "#2a2a2a")])
+        self.style.map("Danger.TButton", background=[("active", "#b30000")])
 
         self.style.configure(
             "Modern.Horizontal.TProgressbar",
-            troughcolor="#d9e2ec",
-            background="#d90429",
-            bordercolor="#d9e2ec",
-            lightcolor="#d90429",
-            darkcolor="#d90429",
+            troughcolor="#d9d9d9",
+            background="#d10f14",
+            bordercolor="#d9d9d9",
+            lightcolor="#d10f14",
+            darkcolor="#d10f14",
         )
 
     def build_ui(self):
-        main = tk.Frame(self.root, bg="#edf2f7", padx=18, pady=18)
+        main = tk.Frame(self.root, bg="#ffffff", padx=18, pady=18)
         main.pack(fill="both", expand=True)
 
-        header = tk.Frame(main, bg="#0f172a", bd=0)
+        header = tk.Frame(main, bg="#000000", bd=0)
         header.pack(fill="x", pady=(0, 14))
 
-        header_inner = tk.Frame(header, bg="#0f172a", padx=24, pady=20)
+        header_inner = tk.Frame(header, bg="#000000", padx=24, pady=20)
         header_inner.pack(fill="x")
 
-        left_header = tk.Frame(header_inner, bg="#0f172a")
+        left_header = tk.Frame(header_inner, bg="#000000")
         left_header.pack(side="left", fill="both", expand=True)
 
         self.load_logo(left_header)
@@ -169,17 +181,17 @@ class KsefApp:
             left_header,
             text=APP_TITLE,
             font=("Segoe UI", 24, "bold"),
-            bg="#0f172a",
+            bg="#000000",
             fg="#ffffff",
         ).pack(anchor="w", pady=(12, 0))
 
-        stats_row = tk.Frame(main, bg="#edf2f7")
+        stats_row = tk.Frame(main, bg="#ffffff")
         stats_row.pack(fill="x", pady=(0, 12))
 
-        self.make_stat_card(stats_row, "Wszystkich FV", self.found_var, "#0f4c81").pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.make_stat_card(stats_row, "Pobrane", self.downloaded_var, "#166534").pack(side="left", fill="x", expand=True, padx=(8, 0))
+        self.make_stat_card(stats_row, "Znalezione FV", self.found_var, "#d10f14").pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.make_stat_card(stats_row, "Pobrane FV", self.downloaded_var, "#000000").pack(side="left", fill="x", expand=True, padx=(8, 0))
 
-        body = tk.Frame(main, bg="#edf2f7")
+        body = tk.Frame(main, bg="#ffffff")
         body.pack(fill="both", expand=True)
 
         left = self.card(body, width=430, padx=18, pady=18)
@@ -189,7 +201,7 @@ class KsefApp:
         center = self.card(body, padx=18, pady=18)
         center.pack(side="left", fill="both", expand=True)
 
-        tk.Label(left, text="Sterowanie", font=("Segoe UI", 17, "bold"), bg="white", fg="#0f172a").pack(anchor="w", pady=(0, 14))
+        tk.Label(left, text="Sterowanie", font=("Segoe UI", 17, "bold"), bg="white", fg="#000000").pack(anchor="w", pady=(0, 14))
 
         buttons_grid = tk.Frame(left, bg="white")
         buttons_grid.pack(fill="x", pady=(0, 14))
@@ -199,35 +211,30 @@ class KsefApp:
         ttk.Button(buttons_grid, text="Start / Otwórz KSeF", style="Primary.TButton", command=self.start_browser).grid(
             row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10)
         )
-        ttk.Button(buttons_grid, text="Sprawdź ilość FV", style="Secondary.TButton", command=self.check_invoice_count).grid(
-            row=1, column=0, sticky="ew", padx=(0, 6), pady=(0, 10)
-        )
         ttk.Button(buttons_grid, text="Otwórz folder", style="Secondary.TButton", command=self.open_download_folder).grid(
-            row=1, column=1, sticky="ew", padx=(6, 0), pady=(0, 10)
+            row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10)
         )
 
-        separator1 = tk.Frame(left, bg="#e2e8f0", height=1)
+        separator1 = tk.Frame(left, bg="#d10f14", height=2)
         separator1.pack(fill="x", pady=10)
 
-        tk.Label(left, text="Pobieranie", font=("Segoe UI", 15, "bold"), bg="white", fg="#0f172a").pack(anchor="w", pady=(4, 12))
-
-        tk.Label(left, text="Ilość FV do pobrania", font=("Segoe UI", 10), bg="white", fg="#334155").pack(anchor="w")
-        self.count_entry = tk.Entry(
+        tk.Label(left, text="Pobieranie", font=("Segoe UI", 15, "bold"), bg="white", fg="#000000").pack(anchor="w", pady=(4, 12))
+        tk.Label(
             left,
-            textvariable=self.count_var,
-            font=("Segoe UI", 15, "bold"),
-            bd=1,
-            relief="solid",
-            justify="center",
-        )
-        self.count_entry.pack(fill="x", pady=(6, 12), ipady=6)
+            text="Program pobierze wszystkie FV z aktualnie ustawionych filtrów w KSeF.",
+            font=("Segoe UI", 10),
+            bg="white",
+            fg="#303030",
+            wraplength=360,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 12))
 
-        ttk.Button(left, text="Pobierz", style="Danger.TButton", command=self.download_invoices).pack(fill="x")
+        ttk.Button(left, text="Pobierz wszystko", style="Danger.TButton", command=self.download_invoices).pack(fill="x")
 
-        separator2 = tk.Frame(left, bg="#e2e8f0", height=1)
+        separator2 = tk.Frame(left, bg="#000000", height=1)
         separator2.pack(fill="x", pady=16)
 
-        tk.Label(left, text="Postęp", font=("Segoe UI", 13, "bold"), bg="white", fg="#0f172a").pack(anchor="w", pady=(0, 8))
+        tk.Label(left, text="Postęp", font=("Segoe UI", 13, "bold"), bg="white", fg="#000000").pack(anchor="w", pady=(0, 8))
 
         self.progress = ttk.Progressbar(
             left,
@@ -237,15 +244,15 @@ class KsefApp:
         )
         self.progress.pack(fill="x")
 
-        status_card = tk.Frame(left, bg="#f8fafc", bd=1, relief="solid", padx=12, pady=10)
+        status_card = tk.Frame(left, bg="#fafafa", bd=1, relief="solid", padx=12, pady=10, highlightbackground="#d10f14", highlightthickness=1)
         status_card.pack(fill="x", pady=(12, 0))
 
         tk.Label(
             status_card,
             textvariable=self.step_var,
             font=("Segoe UI", 10, "bold"),
-            bg="#f8fafc",
-            fg="#334155",
+            bg="#fafafa",
+            fg="#000000",
             wraplength=360,
             justify="left",
         ).pack(anchor="w")
@@ -255,24 +262,24 @@ class KsefApp:
             textvariable=self.result_count_var,
             font=("Segoe UI", 10, "bold"),
             bg="white",
-            fg="#0f4c81",
+            fg="#d10f14",
             wraplength=370,
             justify="left",
         ).pack(anchor="w", pady=(12, 0))
 
         top_center = tk.Frame(center, bg="white")
         top_center.pack(fill="x", pady=(0, 12))
-        tk.Label(top_center, text="Log operacji", font=("Segoe UI", 17, "bold"), bg="white", fg="#0f172a").pack(side="left")
+        tk.Label(top_center, text="Log operacji", font=("Segoe UI", 17, "bold"), bg="white", fg="#000000").pack(side="left")
 
-        log_frame = tk.Frame(center, bg="#0b1220", bd=0)
+        log_frame = tk.Frame(center, bg="#000000", bd=0)
         log_frame.pack(fill="both", expand=True)
 
         self.status_box = tk.Text(
             log_frame,
             height=26,
             font=("Consolas", 10),
-            bg="#0b1220",
-            fg="#d7e3f4",
+            bg="#000000",
+            fg="#ffffff",
             insertbackground="white",
             bd=0,
             relief="flat",
@@ -283,54 +290,61 @@ class KsefApp:
         self.status_box.pack(fill="both", expand=True)
         self.status_box.configure(state="normal")
         self.status_box.insert("end", "[INFO] Aplikacja uruchomiona.\n")
+        self.status_box.insert("end", "[INFO] Tryb pracy: pobierz wszystko z aktualnych filtrów.\n")
         self.status_box.insert("end", "[INFO] Silnik: Selenium + Microsoft Edge.\n")
         self.status_box.insert("end", f"[INFO] Folder programu: {self.base_dir}\n")
         self.status_box.insert("end", f"[INFO] Folder pobierania: {self.base_download_dir}\n")
         self.status_box.configure(state="disabled")
 
-        footer = tk.Frame(main, bg="#edf2f7")
+        footer = tk.Frame(main, bg="#ffffff")
         footer.pack(fill="x", pady=(12, 0))
 
         tk.Label(
             footer,
             text="Made by Paweł Ruchlicki",
             font=("Segoe UI", 10, "bold"),
-            bg="#edf2f7",
-            fg="#475569",
+            bg="#ffffff",
+            fg="#000000",
         ).pack(anchor="e")
 
     def load_logo(self, parent):
+        try:
+            self.logo_image = tk.PhotoImage(data=LOGO_BASE64)
+            if self.logo_image.width() > 560:
+                factor = max(1, self.logo_image.width() // 560)
+                self.logo_image = self.logo_image.subsample(factor, factor)
+            tk.Label(parent, image=self.logo_image, bg="#000000").pack(anchor="w")
+            return
+        except Exception:
+            pass
+
         possible_names = [
+            os.path.join(self.base_dir, "logo.png"),
             os.path.join(self.base_dir, "emerloglogo.png"),
             os.path.join(self.base_dir, "emerlog_logo.png"),
-            os.path.join(self.base_dir, "logo.png"),
-            "/mnt/data/emerloglogo.png",
         ]
 
         for path in possible_names:
             if os.path.exists(path):
                 try:
                     self.logo_image = tk.PhotoImage(file=path)
-                    width = self.logo_image.width()
-                    if width > 560:
-                        self.logo_image = self.logo_image.subsample(2, 2)
-                    tk.Label(parent, image=self.logo_image, bg="#0f172a").pack(anchor="w")
+                    tk.Label(parent, image=self.logo_image, bg="#000000").pack(anchor="w")
                     return
                 except Exception:
                     pass
 
     def card(self, parent, width=None, padx=16, pady=16):
-        frame = tk.Frame(parent, bg="white", bd=1, relief="solid", padx=padx, pady=pady)
+        frame = tk.Frame(parent, bg="white", bd=1, relief="solid", padx=padx, pady=pady, highlightbackground="#d10f14", highlightthickness=1)
         if width:
             frame.configure(width=width)
         return frame
 
     def make_stat_card(self, parent, label, value_var, accent):
-        card = tk.Frame(parent, bg="white", bd=1, relief="solid", padx=14, pady=12)
+        card = tk.Frame(parent, bg="white", bd=1, relief="solid", padx=14, pady=12, highlightbackground=accent, highlightthickness=1)
         strip = tk.Frame(card, bg=accent, height=4)
         strip.pack(fill="x", pady=(0, 10))
-        tk.Label(card, text=label, font=("Segoe UI", 10, "bold"), bg="white", fg="#475569").pack(anchor="w")
-        tk.Label(card, textvariable=value_var, font=("Segoe UI", 20, "bold"), bg="white", fg="#0f172a").pack(anchor="w", pady=(4, 0))
+        tk.Label(card, text=label, font=("Segoe UI", 10, "bold"), bg="white", fg="#000000").pack(anchor="w")
+        tk.Label(card, textvariable=value_var, font=("Segoe UI", 20, "bold"), bg="white", fg=accent).pack(anchor="w", pady=(4, 0))
         return card
 
     def log(self, text):
@@ -574,9 +588,6 @@ class KsefApp:
             return "EMPTY"
         return "|".join(item["row_id"] for item in rows)
 
-    def get_visible_row_ids(self):
-        return {item["row_id"] for item in self.get_current_page_rows()}
-
     def go_to_next_page(self):
         candidates = [
             (By.CSS_SELECTOR, "button[aria-label*='Następna']"),
@@ -615,39 +626,6 @@ class KsefApp:
             after = self.get_page_signature()
             if after == before:
                 break
-
-    def scan_all_pages(self):
-        all_rows = []
-        seen_page_signatures = set()
-
-        self.go_to_first_page()
-        self.wait_for_rows(timeout=10)
-        time.sleep(0.8)
-        pages_scanned = 0
-
-        while pages_scanned < MAX_SCAN_PAGES:
-            rows_data = self.get_current_page_rows()
-            signature = self.get_page_signature()
-
-            if signature in seen_page_signatures:
-                break
-            seen_page_signatures.add(signature)
-
-            all_rows.extend(rows_data)
-            pages_scanned += 1
-            self.update_progress(pages_scanned, max(1, pages_scanned + 1), "Skanowanie stron")
-            self.log(f"[INFO] Odczytano stronę: {len(rows_data)} wierszy")
-
-            if not self.go_to_next_page():
-                break
-
-        if pages_scanned >= MAX_SCAN_PAGES:
-            self.log(f"[INFO] Osiągnięto limit bezpieczeństwa: {MAX_SCAN_PAGES} stron.")
-
-        self.go_to_first_page()
-        self.wait_for_rows(timeout=10)
-        time.sleep(0.8)
-        return all_rows
 
     def click_checkbox(self, checkbox):
         try:
@@ -693,20 +671,6 @@ class KsefApp:
     def uncheck_checkbox(self, checkbox):
         try:
             self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
-        except Exception:
-            pass
-
-        try:
-            aria = checkbox.get_attribute("aria-checked")
-            checked = checkbox.get_attribute("checked")
-            selected = False
-            try:
-                selected = checkbox.is_selected()
-            except Exception:
-                selected = False
-
-            if not selected and aria != "true" and checked is None:
-                return True
         except Exception:
             pass
 
@@ -782,18 +746,19 @@ class KsefApp:
                 pass
         return total
 
-    def create_session_folder(self, count_to_download):
-        session_name = f"{datetime.now().strftime('%Y-%m-%d__%H-%M')}__{count_to_download}_FV"
+    def create_session_folder(self):
+        session_name = f"{datetime.now().strftime('%Y-%m-%d__%H-%M-%S')}__WSZYSTKIE_FV"
         session_dir = os.path.join(self.base_download_dir, session_name)
         os.makedirs(session_dir, exist_ok=True)
-        return session_name, session_dir
+        return session_dir
 
-    def write_session_info(self, session_dir, requested_count, downloaded_count):
+    def write_session_info(self, session_dir, found_count, downloaded_count):
         info_path = os.path.join(session_dir, "info.txt")
         content = (
             f"Data pobrania: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"Żądana liczba FV: {requested_count}\n"
-            f"Pobrano: {downloaded_count}\n"
+            f"Tryb: pobierz wszystko\n"
+            f"Znalezione FV: {found_count}\n"
+            f"Pobrane FV: {downloaded_count}\n"
         )
         with open(info_path, "w", encoding="utf-8") as handle:
             handle.write(content)
@@ -809,9 +774,6 @@ class KsefApp:
                 return newest
             time.sleep(0.5)
         return None
-
-    def save_download_keep_name(self, downloaded_path):
-        return os.path.basename(downloaded_path), downloaded_path
 
     def maybe_extract_archive(self, save_path, session_dir):
         extracted = False
@@ -911,194 +873,119 @@ class KsefApp:
             self.driver = None
             self.wait = None
 
-    def check_invoice_count(self):
-        try:
-            if self.driver is None:
-                messagebox.showwarning("Uwaga", "Najpierw kliknij Start.")
-                return
-
-            self.start_loading("Skanowanie stron", mode="pulse")
-            self.log("[INFO] Skanuję wszystkie strony z FV...")
-
-            all_rows = self.scan_all_pages()
-            total_count = len(all_rows)
-
-            self.last_total_count = total_count
-            self.found_var.set(str(total_count))
-            self.downloaded_var.set("0")
-            self.result_count_var.set(f"Wynik: wszystkich FV = {total_count}")
-
-            self.stop_loading("Sprawdzanie zakończone")
-            self.log(f"[OK] Wszystkich FV: {total_count}")
-
-            messagebox.showinfo("Wynik", f"Wszystkich FV: {total_count}")
-
-        except Exception as e:
-            self.stop_loading("Błąd liczenia")
-            self.log(f"[BŁĄD] Nie udało się sprawdzić ilości FV: {e}")
-            log_path = write_crash_log(self.base_dir, e)
-            extra = f"\n\nLog błędu: {log_path}" if log_path else ""
-            messagebox.showerror("Błąd", f"Nie udało się sprawdzić ilości FV.\n\n{e}{extra}")
-
     def download_invoices(self):
         try:
             if self.driver is None:
                 messagebox.showwarning("Uwaga", "Najpierw kliknij Start.")
                 return
 
-            count_text = self.count_var.get().strip()
-            if not count_text.isdigit():
-                messagebox.showwarning("Uwaga", "Wpisz poprawną liczbę FV do pobrania.")
-                return
-
-            wanted = int(count_text)
-            if wanted <= 0:
-                messagebox.showwarning("Uwaga", "Liczba FV musi być większa od 0.")
-                return
-
-            if self.last_total_count == 0:
-                messagebox.showwarning("Uwaga", "Najpierw kliknij 'Sprawdź ilość FV'.")
-                return
-
-            if wanted > self.last_total_count:
-                messagebox.showwarning(
-                    "Za dużo FV",
-                    f"Chcesz pobrać {wanted} FV, a dostępnych po sprawdzeniu jest tylko {self.last_total_count}."
-                )
-                return
-
             self.start_loading("Przygotowanie pobierania", mode="pulse")
-            self.log(f"[INFO] Rozpoczynam pobieranie. Cel: {wanted} FV")
+            self.log("[INFO] Rozpoczynam pobieranie wszystkich FV z aktualnych filtrów...")
 
-            _, session_dir = self.create_session_folder(wanted)
+            session_dir = self.create_session_folder()
             self.log(f"[INFO] Folder sesji: {session_dir}")
 
+            total_found = 0
             total_downloaded = 0
             batch_number = 1
             batch_size = DEFAULT_BATCH_SIZE
             processed_row_ids = set()
             seen_page_signatures = set()
-            no_progress_rounds = 0
 
             self.go_to_first_page()
             self.wait_for_rows(timeout=10)
             time.sleep(0.8)
 
-            while total_downloaded < wanted:
+            while len(seen_page_signatures) < MAX_SCAN_PAGES:
                 rows_data = self.get_current_page_rows()
                 signature = self.get_page_signature()
 
                 if not rows_data or signature == "EMPTY":
-                    no_progress_rounds += 1
-                    self.log("[INFO] Brak wierszy na stronie, próbuję dalej...")
-                    if no_progress_rounds >= 2 or not self.go_to_next_page():
-                        break
-                    continue
-
-                eligible_rows = [item for item in rows_data if item["row_id"] not in processed_row_ids]
-
-                if not eligible_rows:
-                    if signature in seen_page_signatures:
-                        self.log("[INFO] Na tej stronie nie ma już nowych pozycji, przechodzę dalej.")
-                        if not self.go_to_next_page():
-                            break
-                    else:
-                        seen_page_signatures.add(signature)
-                        if not self.go_to_next_page():
-                            break
-                    continue
-
-                target_on_this_page = min(batch_size, wanted - total_downloaded, len(eligible_rows))
-                self.update_progress(total_downloaded, wanted, "Zaznaczanie faktur")
-
-                self.clear_all_visible_checkboxes()
-                time.sleep(0.2)
-
-                selected_rows = []
-                current_visible_ids = self.get_visible_row_ids()
-
-                for item in eligible_rows:
-                    if len(selected_rows) >= target_on_this_page:
-                        break
-                    if item["row_id"] not in current_visible_ids:
-                        continue
-                    if self.click_checkbox(item["checkbox"]):
-                        selected_rows.append(item)
-                        self.log(f"[INFO] Zaznaczono: {item['text'][:140]}")
-                    else:
-                        self.log(f"[BŁĄD] Nie udało się zaznaczyć: {item['text'][:140]}")
-
-                checked_now = self.count_checked_on_page()
-                self.log(f"[INFO] Faktycznie zaznaczonych na stronie: {checked_now}")
-
-                if not selected_rows or checked_now < len(selected_rows):
-                    no_progress_rounds += 1
-                    self.log("[INFO] Zaznaczenie było niepełne, ponawiam próbę.")
-                    time.sleep(1.0)
-                    if no_progress_rounds >= 3:
-                        break
-                    continue
-
-                self.set_step(f"Pobieranie partii {batch_number}")
-                self.log(f"[INFO] Pobieram partię {batch_number}. Zaznaczone: {len(selected_rows)}")
-
-                downloaded_path = self.try_download_selected(session_dir)
-                if downloaded_path is None:
-                    self.stop_loading("Błąd pobierania")
-                    self.log("[BŁĄD] Nie udało się pobrać zaznaczonej partii.")
-                    messagebox.showerror("Błąd", "Nie udało się pobrać zaznaczonej partii.")
-                    return
-
-                original_name, save_path = self.save_download_keep_name(downloaded_path)
-                self.log(f"[OK] Zapisano: {original_name}")
-
-                if self.maybe_extract_archive(save_path, session_dir):
-                    self.log("[OK] Archiwum ZIP zostało wypakowane.")
-                else:
-                    self.log("[INFO] Pobrany plik nie był ZIP-em.")
-
-                for item in selected_rows:
-                    processed_row_ids.add(item["row_id"])
-
-                total_downloaded += len(selected_rows)
-                self.downloaded_var.set(str(total_downloaded))
-                self.update_progress(total_downloaded, wanted, "Pobieranie faktur")
-                self.log(f"[OK] Łącznie pobrano: {total_downloaded}/{wanted}")
-
-                no_progress_rounds = 0
-                batch_number += 1
-
-                if total_downloaded >= wanted:
+                    self.log("[INFO] Brak kolejnych wierszy na stronie.")
                     break
 
-                remaining_on_page = [
-                    item for item in self.get_current_page_rows()
-                    if item["row_id"] not in processed_row_ids
-                ]
+                if signature in seen_page_signatures:
+                    self.log("[INFO] Wykryto ponownie tę samą stronę. Koniec listy.")
+                    break
 
-                if remaining_on_page:
-                    self.log("[INFO] Zostaję na tej samej stronie, żeby nie pominąć kolejnych pozycji.")
-                    time.sleep(0.8)
-                    continue
+                seen_page_signatures.add(signature)
+                total_found = max(total_found, len(processed_row_ids) + len(rows_data))
+                self.found_var.set(str(total_found))
+
+                while True:
+                    rows_data = self.get_current_page_rows()
+                    remaining_rows = [item for item in rows_data if item["row_id"] not in processed_row_ids]
+
+                    if not remaining_rows:
+                        self.log("[INFO] Ta strona jest już w całości pobrana.")
+                        break
+
+                    target_on_this_page = min(batch_size, len(remaining_rows))
+                    self.update_progress(total_downloaded + len(processed_row_ids) + 1, max(1, total_found + 1), "Zaznaczanie faktur")
+
+                    self.clear_all_visible_checkboxes()
+                    time.sleep(0.2)
+
+                    selected_rows = []
+                    for item in remaining_rows[:target_on_this_page]:
+                        if self.click_checkbox(item["checkbox"]):
+                            selected_rows.append(item)
+                            self.log(f"[INFO] Zaznaczono: {item['text'][:140]}")
+                        else:
+                            self.log(f"[BŁĄD] Nie udało się zaznaczyć: {item['text'][:140]}")
+
+                    checked_now = self.count_checked_on_page()
+                    self.log(f"[INFO] Faktycznie zaznaczonych na stronie: {checked_now}")
+
+                    if not selected_rows or checked_now < len(selected_rows):
+                        self.log("[BŁĄD] Zaznaczenie było niepełne. Przerywam, żeby nic nie pominąć.")
+                        messagebox.showerror("Błąd", "Nie udało się poprawnie zaznaczyć części FV. Sprawdź listę w KSeF i uruchom pobieranie ponownie.")
+                        self.write_session_info(session_dir, total_found, total_downloaded)
+                        self.stop_loading("Błąd pobierania")
+                        return
+
+                    self.set_step(f"Pobieranie partii {batch_number}")
+                    self.log(f"[INFO] Pobieram partię {batch_number}. Zaznaczone: {len(selected_rows)}")
+
+                    downloaded_path = self.try_download_selected(session_dir)
+                    if downloaded_path is None:
+                        self.stop_loading("Błąd pobierania")
+                        self.log("[BŁĄD] Nie udało się pobrać zaznaczonej partii.")
+                        messagebox.showerror("Błąd", "Nie udało się pobrać zaznaczonej partii.")
+                        self.write_session_info(session_dir, total_found, total_downloaded)
+                        return
+
+                    self.log(f"[OK] Zapisano: {os.path.basename(downloaded_path)}")
+
+                    if self.maybe_extract_archive(downloaded_path, session_dir):
+                        self.log("[OK] Archiwum ZIP zostało wypakowane.")
+                    else:
+                        self.log("[INFO] Pobrany plik nie był ZIP-em.")
+
+                    for item in selected_rows:
+                        processed_row_ids.add(item["row_id"])
+
+                    total_downloaded += len(selected_rows)
+                    total_found = max(total_found, len(processed_row_ids))
+                    self.found_var.set(str(total_found))
+                    self.downloaded_var.set(str(total_downloaded))
+                    self.update_progress(total_downloaded, max(1, total_found), "Pobieranie faktur")
+                    self.log(f"[OK] Łącznie pobrano: {total_downloaded}")
+                    batch_number += 1
+                    time.sleep(1.0)
 
                 if not self.go_to_next_page():
                     break
 
-            self.write_session_info(session_dir, wanted, total_downloaded)
-
+            self.write_session_info(session_dir, total_found, total_downloaded)
             self.stop_loading("Gotowe")
-            self.log(f"[OK] Koniec. Pobrano: {total_downloaded}")
+            self.result_count_var.set(f"Wynik: znalezione FV = {total_found}, pobrane FV = {total_downloaded}")
+            self.log(f"[OK] Koniec. Znalezione: {total_found}, pobrane: {total_downloaded}")
 
-            if total_downloaded < wanted:
-                messagebox.showwarning(
-                    "Niepełne pobranie",
-                    f"Pobrano {total_downloaded} z {wanted} FV.\nFolder:\n{session_dir}"
-                )
-            else:
-                messagebox.showinfo(
-                    "Sukces",
-                    f"Pobieranie zakończone.\n\nPobrano: {total_downloaded} FV\nFolder:\n{session_dir}"
-                )
+            messagebox.showinfo(
+                "Sukces",
+                f"Pobieranie zakończone.\n\nZnalezione FV: {total_found}\nPobrane FV: {total_downloaded}\nFolder:\n{session_dir}"
+            )
 
         except Exception as e:
             self.stop_loading("Błąd")
