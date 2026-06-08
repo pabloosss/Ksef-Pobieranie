@@ -24,21 +24,6 @@ DEFAULT_BATCH_SIZE = 10
 MAX_SCAN_PAGES = 300
 ROW_WAIT_SECONDS = 15
 
-LOGO_BASE64 = """
-iVBORw0KGgoAAAANSUhEUgAAAigAAABbCAMAAABu+o7xAAAA/FBMVEX///8AAADNDA8VFBIPDw/8/PxlZWXBAABHR0f03dSWlpbO
-zs6MjIwEBATU1NSzs7PLAAChoaHbhYDq6uofHx///f9xcXH19fXx8fH6//82Njbl5eXe3t5MTEwmJiZ+fn7GxsZcXFy3t7efn5+U
-lJT88/N2dna9AAA9PT0vLy/cnpqFhYVKSkrHEAtVVVW/v7/TAADjycHTCQ3STEsbGhjjvL/blpnqpqbpr67murPt0s3y//+pAAAc
-HBzSc2aFQjLvv7X737vjjYCrfnKAc3DqvLzFAABjLSKCc35gYGAWFhblmYzmm5Po1tbUX1v98eFVEhV1dXXx0KFBQUHVxajW9vVz
-RjFTUlL10Knr7Ozf4+/foqP004Ppsl6+r5UvLy/ru6ygmY0tgSUkJCTD4M6v5P7BAAAIG0lEQVR4nO2cC3eiOhCG0QwEhJ+RIkUB
-O3Yx3P//v9gAc2hJbH4r1d2Z1mk8T7N7Wj9U2gk0F6d6D5kAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB8q6m2W7f1t7v3P8z3F0O9M3b9N9s8z1f2QF0W7cA
-xD9K7n9JmJb5q0J6e4j8f9Qm4J2qj2o2k4nT1f0D4ZgYV8X8mQ8r7G2K0i2m9m4wzK9m8LJ+gY5w9iVq4a0vB2d7e1i1b1cD7WfQk6
-kS3+Ggq9wXl+v4vP6H8s9mQp3cB3v0P7wJr7zF0rQ6+G2wN2nB7n0B9o0Y+9s7D1r7r5c8Lr0hXv6L2c7xKx7k9j3v8zq1+1w+Q2o
-a3Gx8cPq0d3k7rN1c3d6m1z7j5r7Vw0P3o7m2m5b7l1l7m0V0E5z2o2m1b3g3t6S2m2l5q5f2m3h5s5m3j6u4l2z9x2W5Y1W3Y8a3
-f7j5v7r8v9Vx1j4n9G7N6v3r1k4w3b2x6V8m7K9T7m7w7m3t2b4S1f4b4b7s3l4k5k6m4Q4o4o3p2r2r4q3q4q3r4s5s4u5v5u6w6
-v6x7w7x8y8z8y9z9y+z+z+0A0B1C2D3E4F5G6H7I8J9K+L/MANBOCPDQERFSGTHUIVJWKXLZM[...TRUNCATED FOR BREVITY IN TOOL ARGUMENT?]""".strip()
-
 
 def safe_remove(path):
     try:
@@ -308,18 +293,10 @@ class KsefApp:
         ).pack(anchor="e")
 
     def load_logo(self, parent):
-        try:
-            self.logo_image = tk.PhotoImage(data=LOGO_BASE64)
-            if self.logo_image.width() > 560:
-                factor = max(1, self.logo_image.width() // 560)
-                self.logo_image = self.logo_image.subsample(factor, factor)
-            tk.Label(parent, image=self.logo_image, bg="#000000").pack(anchor="w")
-            return
-        except Exception:
-            pass
-
         possible_names = [
             os.path.join(self.base_dir, "logo.png"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png"),
+            "/mnt/data/logo.png",
             os.path.join(self.base_dir, "emerloglogo.png"),
             os.path.join(self.base_dir, "emerlog_logo.png"),
         ]
@@ -328,6 +305,9 @@ class KsefApp:
             if os.path.exists(path):
                 try:
                     self.logo_image = tk.PhotoImage(file=path)
+                    if self.logo_image.width() > 560:
+                        factor = max(1, self.logo_image.width() // 560)
+                        self.logo_image = self.logo_image.subsample(factor, factor)
                     tk.Label(parent, image=self.logo_image, bg="#000000").pack(anchor="w")
                     return
                 except Exception:
