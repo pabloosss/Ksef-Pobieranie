@@ -114,6 +114,7 @@ class KsefApp:
         self.logo_image = None
 
         self.base_dir = resolve_base_dir()
+        self.set_window_icon()
         self.base_download_dir = os.path.join(self.base_dir, "pobrane_fv")
         os.makedirs(self.base_download_dir, exist_ok=True)
 
@@ -130,6 +131,31 @@ class KsefApp:
     # =========================
     # UI
     # =========================
+    def set_window_icon(self):
+        # IKONA programu: mały symbol w oknie, pasku zadań i EXE.
+        base_dir = getattr(self, "base_dir", resolve_base_dir())
+        possible_icons = [
+            os.path.join(base_dir, "grafika", "ikona.ico"),
+            os.path.join(base_dir, "grafika", "ikona.png"),
+            os.path.join(base_dir, "ikona.ico"),
+            os.path.join(base_dir, "ikona.png"),
+        ]
+
+        for icon_path in possible_icons:
+            if not os.path.exists(icon_path):
+                continue
+
+            try:
+                if icon_path.lower().endswith(".ico"):
+                    self.root.iconbitmap(icon_path)
+                    return
+                image = tk.PhotoImage(file=icon_path)
+                self.root.iconphoto(True, image)
+                self.app_icon_image = image
+                return
+            except Exception:
+                pass
+
     def setup_style(self):
         self.style = ttk.Style()
         try:
@@ -315,7 +341,7 @@ class KsefApp:
         self.status_box.insert("end", "Program uruchomiony.\n")
         self.status_box.insert("end", "Przeglądarka: Microsoft Edge.\n")
         self.status_box.insert("end", f"Folder programu: {self.base_dir}\n")
-        self.status_box.insert("end", f"Folder z fakturami: {self.base_download_dir}\n")
+        self.status_box.insert("end", f"Folder główny pobrań: {self.base_download_dir}\n")
         self.status_box.configure(state="disabled")
 
         footer = tk.Frame(main, bg="#ffffff")
@@ -330,19 +356,10 @@ class KsefApp:
         ).pack(anchor="e")
 
     def load_logo(self, parent):
-        try:
-            self.logo_image = tk.PhotoImage(data=LOGO_BASE64)
-            if self.logo_image.width() > 560:
-                factor = max(1, self.logo_image.width() // 560)
-                self.logo_image = self.logo_image.subsample(factor, factor)
-            tk.Label(parent, image=self.logo_image, bg="#000000").pack(anchor="w")
-            return
-        except Exception:
-            pass
-
+        # LOGO firmy: pełna nazwa / znak Emerlog w nagłówku programu.
         possible_names = [
+            os.path.join(self.base_dir, "grafika", "logo.png"),
             os.path.join(self.base_dir, "logo.png"),
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png"),
             os.path.join(self.base_dir, "emerloglogo.png"),
             os.path.join(self.base_dir, "emerlog_logo.png"),
         ]
@@ -358,6 +375,15 @@ class KsefApp:
                     return
                 except Exception:
                     pass
+
+        tk.Label(
+            parent,
+            text="EMERLOG",
+            font=("Segoe UI", 28, "bold italic"),
+            bg="#000000",
+            fg="#ffffff",
+        ).pack(anchor="w")
+
 
     def card(self, parent, width=None, padx=16, pady=16):
         frame = tk.Frame(
@@ -638,44 +664,122 @@ class KsefApp:
             return "EMPTY"
         return "|".join(item["row_id"] for item in rows)
 
-    def go_to_next_page(self):
+    def find_next_button(self):
         candidates = [
             (By.CSS_SELECTOR, "button[aria-label*='Następna']"),
             (By.CSS_SELECTOR, "button[title*='Następna']"),
             (By.CSS_SELECTOR, "[role='button'][aria-label*='Następna']"),
-            (By.XPATH, "//*[contains(text(),'Następna')]"),
-            (By.XPATH, "//*[contains(text(),'Next')]"),
+            (By.XPATH, "//button[contains(., 'Następna')]"),
+            (By.XPATH, "//*[self::button or @role='button'][contains(., 'Next')]"),
         ]
+
+        for by, value in candidates:
+            try:
+                elements = self.driver.find_elements(by, value)
+                for el in elements:
+                    try:
+                        if not el.is_displayed():
+                            continue
+                        disabled = el.get_attribute("disabled")
+                        aria_disabled = el.get_attribute("aria-disabled")
+                        classes = (el.get_attribute("class") or "").lower()
+                        if disabled is not None or aria_disabled == "true" or "disabled" in classes:
+                            continue
+                        return el
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+        return None
+
+    def has_next_page(self):
+        return self.find_next_button() is not None
+
+    def go_to_next_page(self):
         before = self.get_page_signature()
-        if not self.safe_click_candidates(candidates, timeout=2, wait_after=1.2):
+        button = self.find_next_button()
+        if button is None:
+            return False
+
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", button)
+            time.sleep(0.2)
+            try:
+                button.click()
+            except Exception:
+                self.driver.execute_script("arguments[0].click();", button)
+        except Exception:
             return False
 
         self.wait_for_rows(timeout=8)
-        for _ in range(12):
+        for _ in range(15):
             time.sleep(0.4)
             after = self.get_page_signature()
             if after != before and after != "EMPTY":
-                self.log("Przejście na następną stronę")
+                self.log("Następna strona.")
                 return True
+
         return False
 
-    def go_to_first_page(self, max_steps=50):
+
+    def go_to_first_page(self, max_steps=40):
         prev_candidates = [
             (By.CSS_SELECTOR, "button[aria-label*='Poprzednia']"),
             (By.CSS_SELECTOR, "button[title*='Poprzednia']"),
             (By.CSS_SELECTOR, "[role='button'][aria-label*='Poprzednia']"),
-            (By.XPATH, "//*[contains(text(),'Poprzednia')]"),
-            (By.XPATH, "//*[contains(text(),'Previous')]"),
+            (By.XPATH, "//button[contains(., 'Poprzednia')]"),
+            (By.XPATH, "//*[self::button or @role='button'][contains(., 'Previous')]"),
         ]
 
+        moved = 0
         for _ in range(max_steps):
             before = self.get_page_signature()
-            if not self.safe_click_candidates(prev_candidates, timeout=1, wait_after=0.8):
+            clicked = False
+
+            for by, value in prev_candidates:
+                try:
+                    elements = self.driver.find_elements(by, value)
+                    for el in elements:
+                        try:
+                            if not el.is_displayed():
+                                continue
+                            disabled = el.get_attribute("disabled")
+                            aria_disabled = el.get_attribute("aria-disabled")
+                            classes = (el.get_attribute("class") or "").lower()
+                            if disabled is not None or aria_disabled == "true" or "disabled" in classes:
+                                continue
+
+                            self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+                            time.sleep(0.15)
+                            try:
+                                el.click()
+                            except Exception:
+                                self.driver.execute_script("arguments[0].click();", el)
+
+                            clicked = True
+                            break
+                        except Exception:
+                            continue
+                    if clicked:
+                        break
+                except Exception:
+                    pass
+
+            if not clicked:
                 break
+
             self.wait_for_rows(timeout=6)
+            time.sleep(0.4)
             after = self.get_page_signature()
             if after == before:
                 break
+
+            moved += 1
+
+        if moved:
+            self.log(f"Cofnięto do początku listy, liczba przejść: {moved}.")
+
 
     def click_checkbox(self, checkbox):
         """Kliknięcie checkboxa z weryfikacją.
@@ -936,10 +1040,13 @@ class KsefApp:
         return path
 
     def create_session_folder(self):
-        session_name = f"{datetime.now().strftime('%Y-%m-%d__%H-%M-%S')}__WSZYSTKIE_FV"
+        # Każde pobieranie trafia do osobnego folderu z datą i godziną.
+        # Przykład: pobrane_fv/2026-06-09_12-45-30_FV_KSeF
+        session_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_FV_KSeF")
         session_dir = os.path.join(self.base_download_dir, session_name)
         os.makedirs(session_dir, exist_ok=True)
         return session_dir
+
 
     def write_session_info(self, session_dir, found_count, downloaded_count, retry_count=0, missing_count=0):
         info_path = os.path.join(session_dir, "info.txt")
@@ -1191,73 +1298,173 @@ class KsefApp:
             self.driver = None
             self.wait = None
 
+    def wait_stable_page_rows(self, page_no, timeout=8):
+        end = time.time() + timeout
+        best_rows = []
+
+        while time.time() < end:
+            rows = self.get_current_page_rows()
+
+            if len(rows) > len(best_rows):
+                best_rows = rows
+
+            if rows and (len(rows) >= 10 or not self.has_next_page()):
+                time.sleep(0.4)
+                rows2 = self.get_current_page_rows()
+                if len(rows2) == len(rows) and self.get_page_signature() != "EMPTY":
+                    return rows2
+
+            time.sleep(0.35)
+
+        if best_rows:
+            self.log(f"Uwaga: strona {page_no} ma odczytane {len(best_rows)} FV.")
+        return best_rows
+
     def download_invoices(self):
         try:
             if self.driver is None:
-                messagebox.showwarning("Uwaga", "Najpierw kliknij Start.")
+                messagebox.showwarning("Uwaga", "Najpierw kliknij Otwórz KSeF.")
                 return
 
-            self.start_loading("Sprawdzam listę FV", mode="pulse")
-            self.log("Sprawdzam listę faktur...")
-
-            manifest_rows = self.scan_manifest()
-            if not manifest_rows:
-                self.stop_loading("Brak faktur")
-                messagebox.showwarning("Brak FV", "Nie znaleziono faktur na aktualnej liście KSeF.")
-                return
-
-            target_ids = [item["row_id"] for item in manifest_rows]
-            target_map = {item["row_id"]: item for item in manifest_rows}
-            self.found_var.set(str(len(target_ids)))
-            self.result_count_var.set(f"Na liście: {len(target_ids)} FV")
-            self.log(f"Znaleziono FV: {len(target_ids)}")
+            self.start_loading("Przygotowanie pobierania", mode="pulse")
+            self.log("Start pobierania FV.")
+            self.log("Program będzie pobierał stronę po stronie, zwykle po 10 FV.")
 
             session_dir = self.create_session_folder()
             self.log(f"Zapis do folderu: {session_dir}")
 
-            processed_ids, missing_rows = self.process_pages_for_ids(set(target_ids), target_map, session_dir)
+            processed_ids = set()
+            seen_page_signatures = set()
+            all_seen_rows = []
+            page_no = 0
+            warnings = []
 
-            retry_count = 0
-            while missing_rows and retry_count < MAX_RETRY_PASSES:
-                retry_count += 1
-                self.log(f"Weryfikacja wykryła brakujące FV: {len(missing_rows)}. Próba naprawcza {retry_count}/{MAX_RETRY_PASSES}.")
-                missing_ids = set(item["row_id"] for item in missing_rows)
-                processed_ids, missing_rows = self.process_pages_for_ids(missing_ids, target_map, session_dir, processed_ids)
+            self.go_to_first_page()
+            self.wait_for_rows(timeout=10)
+            time.sleep(0.8)
 
+            while page_no < MAX_SCAN_PAGES:
+                page_no += 1
+                rows_data = self.wait_stable_page_rows(page_no)
+                signature = self.get_page_signature()
+
+                if not rows_data or signature == "EMPTY":
+                    self.log("Brak kolejnych FV na stronie.")
+                    break
+
+                if signature in seen_page_signatures:
+                    self.log("Ta sama strona pojawiła się ponownie. Kończę, żeby nie pobierać drugi raz tego samego.")
+                    break
+
+                seen_page_signatures.add(signature)
+
+                page_rows = []
+                page_ids = set()
+                for item in rows_data:
+                    if item["row_id"] not in page_ids:
+                        page_ids.add(item["row_id"])
+                        page_rows.append(item)
+
+                all_seen_rows.extend([{"row_id": item["row_id"], "text": item["text"], "page": page_no} for item in page_rows])
+
+                next_exists = self.has_next_page()
+                if next_exists and len(page_rows) != 10:
+                    msg = f"Strona {page_no}: odczytano {len(page_rows)} FV zamiast 10. Program pobiera to, co widzi."
+                    warnings.append(msg)
+                    self.log("Uwaga: " + msg)
+
+                self.found_var.set(str(len(all_seen_rows)))
+                self.result_count_var.set(f"Strona {page_no}: {len(page_rows)} FV")
+
+                rows_to_download = [item for item in page_rows if item["row_id"] not in processed_ids]
+
+                if rows_to_download:
+                    self.log(f"Strona {page_no}: pobieram {len(rows_to_download)} FV.")
+                    verified_ids = self.select_rows_with_retry(rows_to_download, max_attempts=8)
+                    verified_rows = [item for item in rows_to_download if item["row_id"] in verified_ids]
+
+                    if len(verified_rows) != len(rows_to_download):
+                        missing_now = [item for item in rows_to_download if item["row_id"] not in verified_ids]
+                        self.append_pending_report(session_dir, page_no, missing_now)
+                        self.log(f"Uwaga: strona {page_no}, zaznaczono {len(verified_rows)}/{len(rows_to_download)} FV.")
+
+                    if not verified_rows:
+                        self.log(f"Nie udało się zaznaczyć FV na stronie {page_no}. Przerywam, żeby nic nie pominąć.")
+                        break
+
+                    self.set_step(f"Pobieranie strony {page_no}")
+                    downloaded_path = self.try_download_selected(session_dir)
+
+                    if downloaded_path is None:
+                        self.log(f"Nie udało się pobrać strony {page_no}. Przerywam, żeby nic nie pominąć.")
+                        self.append_pending_report(session_dir, page_no, verified_rows)
+                        break
+
+                    self.log(f"Zapisano: {os.path.basename(downloaded_path)}")
+
+                    if self.maybe_extract_archive(downloaded_path, session_dir):
+                        self.log("ZIP wypakowany.")
+                    else:
+                        self.log("Pobrany plik nie był ZIP-em.")
+
+                    for item in verified_rows:
+                        processed_ids.add(item["row_id"])
+
+                    self.downloaded_var.set(str(len(processed_ids)))
+                    self.update_progress(len(processed_ids), max(1, len(all_seen_rows)), "Pobieranie faktur")
+                    self.log(f"Razem pobrane: {len(processed_ids)} z odczytanych {len(all_seen_rows)} FV.")
+                    time.sleep(1.0)
+
+                self.clear_all_visible_checkboxes()
+                time.sleep(0.3)
+
+                if not self.go_to_next_page():
+                    break
+
+            missing_rows = [item for item in all_seen_rows if item["row_id"] not in processed_ids]
             missing_count = len(missing_rows)
-            self.write_session_info(session_dir, len(target_ids), len(processed_ids), retry_count, missing_count)
-            audit_report = self.save_audit_report(session_dir, manifest_rows, processed_ids)
-            self.log(f"Raport weryfikacji: {audit_report}")
+
+            self.write_session_info(session_dir, len(all_seen_rows), len(processed_ids), 0, missing_count)
+            audit_report = self.save_audit_report(session_dir, all_seen_rows, processed_ids)
+            self.log(f"Raport: {audit_report}")
+
+            if warnings:
+                warnings_path = os.path.join(session_dir, "uwagi.txt")
+                with open(warnings_path, "w", encoding="utf-8") as handle:
+                    for item in warnings:
+                        handle.write(item + "\n")
+                self.log(f"Uwagi zapisane: {warnings_path}")
 
             if missing_rows:
                 missing_report = self.save_missing_report(session_dir, missing_rows)
-                self.stop_loading("Weryfikacja zakończona z brakami")
-                self.result_count_var.set(
-                    f"Pobrane: {len(processed_ids)} z {len(target_ids)} FV | Brakuje: {missing_count}"
-                )
-                self.log(f"Błąd: Po weryfikacji nadal brakuje {missing_count} FV.")
-                self.log(f"Lista braków: {missing_report}")
+                self.stop_loading("Zakończono z brakami")
+                self.result_count_var.set(f"Pobrano: {len(processed_ids)} z {len(all_seen_rows)} FV")
+                self.log(f"Brakuje {missing_count} FV. Lista: {missing_report}")
                 messagebox.showwarning(
                     "Niepełne pobranie",
-                    f"Pobrano {len(processed_ids)} z {len(target_ids)} FV.\n\nBrakujące pozycje: {missing_count}\nLista braków została zapisana do pliku:\n{missing_report}"
+                    f"Pobrano {len(processed_ids)} z {len(all_seen_rows)} FV.\\n\\n"
+                    f"Brakujące pozycje: {missing_count}\\n"
+                    f"Lista braków:\\n{missing_report}"
                 )
             else:
                 self.stop_loading("Gotowe")
-                self.result_count_var.set(
-                    f"Pobrano: {len(processed_ids)} z {len(target_ids)} FV"
-                )
-                self.log(f"Gotowe. Pobrano {len(processed_ids)} z {len(target_ids)} FV.")
+                self.result_count_var.set(f"Pobrano: {len(processed_ids)} z {len(all_seen_rows)} FV")
+                self.log(f"Gotowe. Pobrano {len(processed_ids)} z {len(all_seen_rows)} FV.")
                 messagebox.showinfo(
                     "Sukces",
-                    f"Pobieranie zakończone.\n\nZnalezione FV: {len(target_ids)}\nPobrane FV: {len(processed_ids)}\nFolder:\n{session_dir}"
+                    f"Pobieranie zakończone.\\n\\n"
+                    f"Odczytane FV: {len(all_seen_rows)}\\n"
+                    f"Pobrane FV: {len(processed_ids)}\\n"
+                    f"Folder:\\n{session_dir}"
                 )
 
         except Exception as e:
             self.stop_loading("Błąd")
             self.log(f"Błąd: Nie udało się wykonać pobierania: {e}")
             log_path = write_crash_log(self.base_dir, e)
-            extra = f"\n\nLog błędu: {log_path}" if log_path else ""
-            messagebox.showerror("Błąd", f"Nie udało się wykonać pobierania.\n\n{e}{extra}")
+            extra = f"\\n\\nLog błędu: {log_path}" if log_path else ""
+            messagebox.showerror("Błąd", f"Nie udało się wykonać pobierania.\\n\\n{e}{extra}")
+
 
     def on_close(self):
         try:
