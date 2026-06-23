@@ -1,56 +1,78 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="page-title">
-    <div>
-        <p class="eyebrow">Start</p>
-        <h1>Panel urlopów</h1>
-        <p>Najważniejsze rzeczy na jednej stronie: limit, wnioski i najbliższe nieobecności.</p>
+{% set status_names = {
+    'oczekuje_menedzer': 'Czeka na menedżera',
+    'oczekuje_kadry': 'Czeka na kadry',
+    'do_poprawy': 'Do poprawy',
+    'zaakceptowany': 'Zaakceptowany',
+    'rozliczony_kadry': 'Rozliczony',
+    'odrzucony': 'Odrzucony',
+    'anulowany': 'Anulowany'
+} %}
+
+<section class="simple-home">
+    <div class="home-hero">
+        <p class="eyebrow">Panel pracownika</p>
+        <h1>Co chcesz zrobić?</h1>
+        <p>Najczęstsze akcje masz od razu pod ręką. Bez zbędnych tabel i statystyk.</p>
     </div>
-    <a class="btn-primary" href="{{ url_for('new_leave') }}">Złóż wniosek</a>
+
+    <div class="home-actions">
+        <a class="home-action main" href="{{ url_for('new_leave') }}">
+            <strong>Złóż wniosek</strong>
+            <span>Urlop, L4, odbiór dnia lub inna nieobecność.</span>
+        </a>
+        <a class="home-action" href="{{ url_for('requests_view') }}">
+            <strong>Moje wnioski</strong>
+            <span>Sprawdź status swoich zgłoszeń.</span>
+        </a>
+        <a class="home-action" href="{{ url_for('calendar_view') }}">
+            <strong>Kalendarz</strong>
+            <span>Zobacz zaplanowane nieobecności.</span>
+        </a>
+    </div>
 </section>
 
-<section class="quick-grid">
-    <a class="quick-card primary" href="{{ url_for('new_leave') }}">
-        <strong>Złóż wniosek</strong>
-        <span>Urlop, L4, odbiór dnia albo inna nieobecność.</span>
-    </a>
-    <a class="quick-card" href="{{ url_for('requests_view') }}">
-        <strong>Moje wnioski</strong>
-        <span>Sprawdź status i historię zgłoszeń.</span>
-    </a>
-    <a class="quick-card" href="{{ url_for('calendar_view') }}">
-        <strong>Kalendarz</strong>
-        <span>Zobacz kto i kiedy jest nieobecny.</span>
-    </a>
-</section>
+<section class="home-grid">
+    <div class="card clear-card limit-overview">
+        <span class="card-label">Twój limit</span>
+        <div class="limit-number">{{ summary.available }}</div>
+        <p>dni dostępne do wykorzystania</p>
+        <div class="limit-mini">
+            <span>Wykorzystane: <b>{{ summary.accepted }}</b></span>
+            <span>Oczekujące: <b>{{ summary.pending }}</b></span>
+        </div>
+    </div>
 
-<section class="stats-grid">
-    <div class="stat-card accent"><span>Dostępne dni</span><strong>{{ summary.available }}</strong><small>możesz jeszcze wykorzystać</small></div>
-    <div class="stat-card"><span>Wykorzystane</span><strong>{{ summary.accepted }}</strong><small>zaakceptowane dni urlopu</small></div>
-    <div class="stat-card"><span>Oczekujące</span><strong>{{ stats.pending }}</strong><small>wnioski do decyzji</small></div>
-    <div class="stat-card"><span>Nieobecni dziś</span><strong>{{ stats.absent_today }}</strong><small>w widocznej grupie</small></div>
-</section>
-
-<div class="two-columns">
-    <div class="card">
-        <div class="section-heading"><div><h2>Najbliższe nieobecności</h2><p>Kto będzie poza pracą w najbliższym czasie.</p></div></div>
+    <div class="card clear-card">
+        <div class="section-heading compact">
+            <div>
+                <h2>Ostatni wniosek</h2>
+                <p>Najnowsze zgłoszenie z Twojej historii.</p>
+            </div>
+            <a href="{{ url_for('requests_view') }}">Wszystkie</a>
+        </div>
         <div class="list-stack">
-            {% for r in stats.upcoming %}
-            <div class="list-item rich-item"><div><b>{{ r.full_name }}</b><span>{{ r.department }} · {{ r.leave_type }}</span></div><em>{{ r.date_from|pldate }} – {{ r.date_to|pldate }}</em></div>
+            {% for r in stats.latest[:1] %}
+            <div class="list-item rich-item">
+                <div>
+                    <b>{{ r.leave_type }}</b>
+                    <span>{{ r.date_from|pldate }} – {{ r.date_to|pldate }}</span>
+                </div>
+                <span class="status status-{{ r.status }}">{{ status_names.get(r.status, r.status) }}</span>
+            </div>
             {% else %}
-            <p class="empty-state">Brak najbliższych nieobecności.</p>
+            <p class="empty-state">Nie masz jeszcze żadnego wniosku.</p>
             {% endfor %}
         </div>
     </div>
-    <div class="card">
-        <div class="section-heading"><div><h2>Ostatnie wnioski</h2><p>Twoje najnowsze zgłoszenia.</p></div></div>
-        <div class="list-stack">
-            {% for r in stats.latest %}
-            <div class="list-item rich-item"><div><b>{{ r.leave_type }}</b><span>{{ r.date_from|pldate }} – {{ r.date_to|pldate }}</span></div><span class="status status-{{ r.status }}">{{ r.status }}</span></div>
-            {% else %}
-            <p class="empty-state">Nie masz jeszcze wniosków.</p>
-            {% endfor %}
-        </div>
-    </div>
-</div>
+</section>
+
+{% if is_manager() or is_hr() %}
+<section class="manager-strip">
+    <a href="{{ url_for('approvals') }}"><b>Do akceptacji</b><span>{{ stats.pending }} oczekujące</span></a>
+    <a href="{{ url_for('presence') }}"><b>Obecność</b><span>Widok zespołu lub firmy</span></a>
+    <a href="{{ url_for('reports') }}"><b>Raporty</b><span>Eksport i zestawienia</span></a>
+</section>
+{% endif %}
 {% endblock %}
