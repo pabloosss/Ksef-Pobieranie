@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-title"><div><p class="eyebrow">Panel</p><h1>Dashboard</h1><p>Najważniejsze informacje o urlopach.</p></div><a class="btn-primary" href="{{ url_for('new_leave') }}">Złóż wniosek</a></section>
+<section class="stats-grid">
+    <div class="stat-card accent"><span>Dostępne dni</span><strong>{{ summary.available }}</strong><small>po odjęciu zaakceptowanych i oczekujących</small></div>
+    <div class="stat-card"><span>Wykorzystane</span><strong>{{ summary.accepted }}</strong><small>zaakceptowane</small></div>
+    <div class="stat-card"><span>Oczekujące</span><strong>{{ stats.pending }}</strong><small>do decyzji</small></div>
+    <div class="stat-card"><span>Nieobecni dziś</span><strong>{{ stats.absent_today }}</strong><small>w widocznej grupie</small></div>
+</section>
+<div class="two-columns">
+    <div class="card"><h2>Najbliższe nieobecności</h2><div class="list-stack">{% for r in stats.upcoming %}<div class="list-item"><b>{{ r.full_name }}</b><span>{{ r.leave_type }} · {{ r.date_from|pldate }} – {{ r.date_to|pldate }}</span></div>{% else %}<p class="empty-state">Brak najbliższych nieobecności.</p>{% endfor %}</div></div>
+    <div class="card"><h2>Moje ostatnie wnioski</h2><div class="list-stack">{% for r in stats.latest %}<div class="list-item"><b>{{ r.leave_type }}</b><span>{{ r.date_from|pldate }} – {{ r.date_to|pldate }} · {{ r.status }}</span></div>{% else %}<p class="empty-state">Brak wniosków.</p>{% endfor %}</div></div>
+</div>
+{% endblock %}
