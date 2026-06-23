@@ -3,6 +3,7 @@ from .config import SECRET_KEY, LEAVE_TYPES
 from .db import init_db
 from .helpers import pl_date, is_hr, is_manager
 from .routes import register_routes
+from .routes_extra import register_extra_routes
 
 
 def create_app():
@@ -16,4 +17,5 @@ def create_app():
         return {"is_hr": is_hr, "is_manager": is_manager, "leave_types": LEAVE_TYPES}
 
     register_routes(app)
+    register_extra_routes(app)
     return app
