@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-title"><div><p class="eyebrow">Nieobecności</p><h1>Nowy wniosek</h1><p>System automatycznie liczy dni robocze bez weekendów i świąt.</p></div></section>
+<div class="layout-grid">
+    <div class="card form-card">
+        <form method="post">
+            <label>Typ nieobecności</label>
+            <select name="leave_type">{% for t in leave_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select>
+            <div class="date-grid"><div><label>Data od</label><input type="date" name="date_from" required></div><div><label>Data do</label><input type="date" name="date_to" required></div></div>
+            <label>Zastępstwo</label><select name="replacement_user_id"><option value="">Brak</option>{% for e in employees %}<option value="{{ e.id }}">{{ e.full_name }}</option>{% endfor %}</select>
+            <label>Komentarz</label><textarea name="comment" rows="4"></textarea>
+            <button type="submit">Wyślij wniosek</button>
+        </form>
+    </div>
+    <div class="card"><h2>Mój limit</h2><div class="mini-summary"><div><span>Dostępne</span><strong>{{ summary.available }}</strong></div><div><span>Wykorzystane</span><strong>{{ summary.accepted }}</strong></div><div><span>Oczekujące</span><strong>{{ summary.pending }}</strong></div></div></div>
+</div>
+{% endblock %}
