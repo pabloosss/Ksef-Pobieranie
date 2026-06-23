@@ -2,17 +2,27 @@
 {% block content %}
 <div class="login-card">
     <div class="login-brand">
-        <img src="{{ url_for('graphics', filename='logo.png') }}" alt="EMERLOG">
-        <h1>EMERLOG Urlopy</h1>
-        <p>System urlopów i nieobecności</p>
+        <div class="login-logo-wrap">
+            <img src="{{ url_for('graphics', filename='logo.png') }}" alt="EMERLOG" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <div class="login-logo-fallback">EMERLOG</div>
+        </div>
+        <h1>Panel urlopów</h1>
+        <p>Wnioski, akceptacje, obecność i limity w jednym miejscu.</p>
     </div>
-    <form method="post">
+
+    <form method="post" class="login-form">
         <label>Login</label>
-        <input name="login" required autofocus>
+        <input name="login" required autofocus autocomplete="username">
+
         <label>Hasło</label>
-        <input name="password" type="password" required>
+        <input name="password" type="password" required autocomplete="current-password">
+
         <button type="submit">Zaloguj</button>
     </form>
-    <div class="demo-box"><b>Konta testowe</b><br>jan / jan123 · anna / anna123 · ewa / ewa123 · kadry / kadry123 · admin / admin123</div>
+
+    <div class="demo-box">
+        <b>Środowisko testowe</b><br>
+        Użytkownicy startowi są tworzeni automatycznie po pierwszym uruchomieniu aplikacji.
+    </div>
 </div>
 {% endblock %}
