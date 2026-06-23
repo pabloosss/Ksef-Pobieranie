@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMERLOG Urlopy</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="{% if not session.get('user_id') %}login-body{% endif %}">
+{% if session.get('user_id') %}
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="{{ url_for('graphics', filename='logo.png') }}" alt="EMERLOG">
+            <div class="brand-fallback">EMERLOG</div>
+            <small>Leave Manager</small>
+        </div>
+        <nav class="menu">
+            <div class="menu-section">Ewidencja</div>
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('presence') }}">Obecność</a>
+            <a href="{{ url_for('audit') }}">Historia zmian</a>
+            <div class="menu-section">Nieobecności</div>
+            <a href="{{ url_for('new_leave') }}">Wnioskuj</a>
+            <a href="{{ url_for('calendar_view') }}">Kalendarz</a>
+            <a href="{{ url_for('requests_view') }}">Zgłoszenia</a>
+            <a href="{{ url_for('approvals') }}">Akceptacja</a>
+            {% if is_hr() %}
+            <div class="menu-section">Pracownicy</div>
+            <a href="{{ url_for('employees') }}">Ludzie</a>
+            <a href="{{ url_for('limits') }}">Limity</a>
+            <a href="{{ url_for('reports') }}">Raporty</a>
+            {% elif is_manager() %}
+            <div class="menu-section">Zespół</div>
+            <a href="{{ url_for('reports') }}">Raporty zespołu</a>
+            {% endif %}
+        </nav>
+    </aside>
+    <div class="content-shell">
+        <header class="topbar">
+            <div><b>{{ session.get('full_name') }}</b> <span>{{ session.get('role') }}</span></div>
+            <a class="logout" href="{{ url_for('logout') }}">Wyloguj</a>
+        </header>
+        <main>
+{% else %}
+<main class="login-main">
+{% endif %}
+{% with messages = get_flashed_messages() %}
+    {% if messages %}<div class="msg">{% for message in messages %}<p>{{ message }}</p>{% endfor %}</div>{% endif %}
+{% endwith %}
+{% block content %}{% endblock %}
+{% if session.get('user_id') %}
+        </main>
+    </div>
+</div>
+{% else %}
+</main>
+{% endif %}
+</body>
+</html>
