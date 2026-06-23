@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-title"><div><p class="eyebrow">Kadry</p><h1>Limity urlopowe</h1><p>Podgląd wykorzystania urlopu.</p></div></section>
+<div class="card"><div class="table-wrapper"><table><thead><tr><th>Pracownik</th><th>Limit</th><th>Zaległe</th><th>Razem</th><th>Wykorzystane</th><th>Oczekujące</th><th>Dostępne</th></tr></thead><tbody>{% for row in rows %}<tr><td><b>{{ row.user.full_name }}</b><br><small>{{ row.user.department }}</small></td><td>{{ row.summary.base }}</td><td>{{ row.summary.carryover }}</td><td>{{ row.summary.total }}</td><td>{{ row.summary.accepted }}</td><td>{{ row.summary.pending }}</td><td><b>{{ row.summary.available }}</b></td></tr>{% else %}<tr><td colspan="7" class="empty-state">Brak danych.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}
