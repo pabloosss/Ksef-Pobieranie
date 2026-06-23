@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="login-card">
+    <div class="login-brand">
+        <img src="{{ url_for('graphics', filename='logo.png') }}" alt="EMERLOG">
+        <h1>EMERLOG Urlopy</h1>
+        <p>System urlopów i nieobecności</p>
+    </div>
+    <form method="post">
+        <label>Login</label>
+        <input name="login" required autofocus>
+        <label>Hasło</label>
+        <input name="password" type="password" required>
+        <button type="submit">Zaloguj</button>
+    </form>
+    <div class="demo-box"><b>Konta testowe</b><br>jan / jan123 · anna / anna123 · ewa / ewa123 · kadry / kadry123 · admin / admin123</div>
+</div>
+{% endblock %}
