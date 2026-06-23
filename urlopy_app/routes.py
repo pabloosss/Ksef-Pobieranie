@@ -2,7 +2,8 @@ from datetime import date, timedelta
 import calendar
 import csv
 import io
-from flask import Response, flash, redirect, render_template, request, session, url_for, send_from_directory
+import os
+from flask import Response, abort, flash, redirect, render_template, request, session, url_for, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .config import LEAVE_TYPES, LIMIT_TYPES
@@ -11,6 +12,30 @@ from .helpers import (
     login_required, role_required, is_hr, is_manager, parse_date, count_workdays,
     current_user, visible_user_ids, vacation_summary, log_action
 )
+
+
+GRAPHICS_DIR = "grafiki"
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico")
+
+
+def find_graphic(preferred_names, keywords):
+    if not os.path.isdir(GRAPHICS_DIR):
+        return None
+
+    available = os.listdir(GRAPHICS_DIR)
+    lowered = {name.lower(): name for name in available}
+
+    for name in preferred_names:
+        found = lowered.get(name.lower())
+        if found:
+            return found
+
+    for name in available:
+        low = name.lower()
+        if low.endswith(IMAGE_EXTENSIONS) and any(keyword in low for keyword in keywords):
+            return name
+
+    return None
 
 
 def can_decide(owner):
@@ -24,7 +49,27 @@ def can_decide(owner):
 def register_routes(app):
     @app.route("/grafiki/<path:filename>")
     def graphics(filename):
-        return send_from_directory("grafiki", filename)
+        return send_from_directory(GRAPHICS_DIR, filename)
+
+    @app.route("/brand/logo")
+    def brand_logo():
+        filename = find_graphic(
+            ["logo.png", "logo.jpg", "logo.jpeg", "logo.webp", "emerlog.png", "emerlog_logo.png", "emerlog-logo.png"],
+            ["logo", "emerlog"]
+        )
+        if not filename:
+            abort(404)
+        return send_from_directory(GRAPHICS_DIR, filename)
+
+    @app.route("/favicon.ico")
+    def favicon():
+        filename = find_graphic(
+            ["favicon.ico", "icon.ico", "ikona.ico", "ikona.png", "icon.png", "favicon.png", "logo.png"],
+            ["favicon", "icon", "ikona", "logo"]
+        )
+        if not filename:
+            abort(404)
+        return send_from_directory(GRAPHICS_DIR, filename)
 
     @app.route("/")
     def index():
