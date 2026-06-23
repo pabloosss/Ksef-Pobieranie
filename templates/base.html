@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EMERLOG Urlopy</title>
+    <link rel="icon" href="{{ url_for('favicon') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="{% if not session.get('user_id') %}login-body{% endif %}">
@@ -12,7 +13,7 @@
     <aside class="sidebar">
         <div class="brand">
             <div class="brand-logo-wrap">
-                <img src="{{ url_for('graphics', filename='logo.png') }}" alt="EMERLOG" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+                <img src="{{ url_for('brand_logo') }}" alt="EMERLOG" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
                 <div class="brand-fallback">E</div>
             </div>
             <div>
