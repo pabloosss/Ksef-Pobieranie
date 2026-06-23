@@ -1,6 +1,94 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="page-title"><div><p class="eyebrow">Wnioski</p><h1>Zgłoszenia i akceptacja</h1><p>Lista wniosków z filtrami i akcjami.</p></div><a class="btn-primary" href="{{ url_for('new_leave') }}">Nowy wniosek</a></section>
-<div class="card filters-card"><form method="get" class="filters-form"><div><label>Pracownik</label><input name="employee" value="{{ request.args.get('employee','') }}"></div><div><label>Dział</label><select name="department"><option value="">Wszystkie</option>{% for d in departments %}<option value="{{ d.name }}" {% if request.args.get('department') == d.name %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div><div><label>Status</label><select name="status"><option value="">Wszystkie</option>{% for s in ['oczekuje_menedzer','oczekuje_kadry','do_poprawy','zaakceptowany','rozliczony_kadry','odrzucony','anulowany'] %}<option value="{{ s }}" {% if request.args.get('status') == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div><div><label>Typ</label><select name="leave_type"><option value="">Wszystkie</option>{% for t in leave_types %}<option value="{{ t }}" {% if request.args.get('leave_type') == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div><div><label>&nbsp;</label><button>Filtruj</button></div></form></div>
-<div class="card"><div class="table-wrapper"><table><thead><tr><th>Pracownik</th><th>Dział</th><th>Typ</th><th>Zakres</th><th>Dni</th><th>Status</th><th>Akcje</th></tr></thead><tbody>{% for r in requests_list %}<tr><td><b>{{ r.full_name }}</b><br><small>{{ r.manager_name or 'brak menedżera' }}</small></td><td>{{ r.department }}</td><td>{{ r.leave_type }}</td><td>{{ r.date_from|pldate }} – {{ r.date_to|pldate }}</td><td><b>{{ r.days_count }}</b></td><td><span class="status status-{{ r.status }}">{{ r.status }}</span></td><td><a class="btn-secondary mini-btn" href="{{ url_for('request_detail', request_id=r.id) }}">Podgląd</a>{% if is_hr() or is_manager() %}<form class="inline-form" method="post" action="{{ url_for('request_action', request_id=r.id, action='accept') }}"><button class="btn-ok">OK</button></form><form class="inline-form" method="post" action="{{ url_for('request_action', request_id=r.id, action='return') }}"><input name="decision_comment" placeholder="powód" required><button class="btn-muted">Poprawa</button></form><form class="inline-form" method="post" action="{{ url_for('request_action', request_id=r.id, action='reject') }}"><input name="decision_comment" placeholder="powód" required><button class="btn-bad">Odrzuć</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="7" class="empty-state">Brak wniosków.</td></tr>{% endfor %}</tbody></table></div></div>
+{% set status_names = {
+    'oczekuje_menedzer': 'Czeka na menedżera',
+    'oczekuje_kadry': 'Czeka na kadry',
+    'do_poprawy': 'Do poprawy',
+    'zaakceptowany': 'Zaakceptowany',
+    'rozliczony_kadry': 'Rozliczony',
+    'odrzucony': 'Odrzucony',
+    'anulowany': 'Anulowany'
+} %}
+<section class="page-title">
+    <div>
+        <p class="eyebrow">Wnioski</p>
+        <h1>Zgłoszenia urlopowe</h1>
+        <p>Filtrowanie, podgląd i decyzje dla wniosków widocznych dla Twojej roli.</p>
+    </div>
+    <a class="btn-primary" href="{{ url_for('new_leave') }}">Nowy wniosek</a>
+</section>
+
+<div class="card filters-card">
+    <form method="get" class="filters-form">
+        <div>
+            <label>Pracownik</label>
+            <input name="employee" placeholder="np. Jan Kowalski" value="{{ request.args.get('employee','') }}">
+        </div>
+        <div>
+            <label>Dział</label>
+            <select name="department">
+                <option value="">Wszystkie</option>
+                {% for d in departments %}<option value="{{ d.name }}" {% if request.args.get('department') == d.name %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Status</label>
+            <select name="status">
+                <option value="">Wszystkie</option>
+                {% for s, label in status_names.items() %}<option value="{{ s }}" {% if request.args.get('status') == s %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Typ</label>
+            <select name="leave_type">
+                <option value="">Wszystkie</option>
+                {% for t in leave_types %}<option value="{{ t }}" {% if request.args.get('leave_type') == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>&nbsp;</label>
+            <button>Filtruj</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Pracownik</th>
+                    <th>Dział</th>
+                    <th>Typ</th>
+                    <th>Zakres</th>
+                    <th>Dni</th>
+                    <th>Status</th>
+                    <th>Akcje</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in requests_list %}
+                <tr>
+                    <td><b>{{ r.full_name }}</b><br><small>Menedżer: {{ r.manager_name or 'brak' }}</small></td>
+                    <td>{{ r.department }}</td>
+                    <td>{{ r.leave_type }}</td>
+                    <td>{{ r.date_from|pldate }} – {{ r.date_to|pldate }}</td>
+                    <td><b>{{ r.days_count }}</b></td>
+                    <td><span class="status status-{{ r.status }}">{{ status_names.get(r.status, r.status) }}</span></td>
+                    <td class="actions-cell">
+                        <a class="btn-secondary mini-btn" href="{{ url_for('request_detail', request_id=r.id) }}">Podgląd</a>
+                        {% if is_hr() or is_manager() %}
+                            <form class="inline-form" method="post" action="{{ url_for('request_action', request_id=r.id, action='accept') }}"><button class="btn-ok">Akceptuj</button></form>
+                            <form class="inline-form" method="post" action="{{ url_for('request_action', request_id=r.id, action='return') }}"><input name="decision_comment" placeholder="powód" required><button class="btn-muted">Poprawa</button></form>
+                            <form class="inline-form" method="post" action="{{ url_for('request_action', request_id=r.id, action='reject') }}"><input name="decision_comment" placeholder="powód" required><button class="btn-bad">Odrzuć</button></form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="7" class="empty-state">Brak wniosków dla wybranych filtrów.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endblock %}
