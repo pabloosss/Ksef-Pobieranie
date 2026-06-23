@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-title"><div><p class="eyebrow">Raporty</p><h1>Raport wniosków</h1><p>Lista ostatnich 200 wniosków.</p></div><a class="btn-primary" href="{{ url_for('export_csv') }}">Eksport CSV</a></section>
+<div class="card"><div class="table-wrapper"><table><thead><tr><th>Pracownik</th><th>Dział</th><th>Typ</th><th>Od</th><th>Do</th><th>Dni</th><th>Status</th></tr></thead><tbody>{% for r in rows %}<tr><td><b>{{ r.full_name }}</b></td><td>{{ r.department }}</td><td>{{ r.leave_type }}</td><td>{{ r.date_from|pldate }}</td><td>{{ r.date_to|pldate }}</td><td>{{ r.days_count }}</td><td><span class="status status-{{ r.status }}">{{ r.status }}</span></td></tr>{% else %}<tr><td colspan="7" class="empty-state">Brak wniosków.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}
