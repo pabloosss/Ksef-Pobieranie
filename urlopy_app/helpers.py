@@ -4,6 +4,23 @@ from flask import flash, redirect, session, url_for
 from .config import HR_ROLES
 
 
+STATUS_LABELS = {
+    "oczekuje_menedzer": "Czeka na menedżera",
+    "oczekuje_kadry": "Czeka na kadry",
+    "do_poprawy": "Do poprawy",
+    "zaakceptowany": "Zaakceptowany",
+    "rozliczony_kadry": "Rozliczony przez kadry",
+    "odrzucony": "Odrzucony",
+    "anulowany": "Anulowany",
+}
+
+
+def status_label(value):
+    if not value:
+        return "—"
+    return STATUS_LABELS.get(value, value.replace("_", " ").capitalize())
+
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
