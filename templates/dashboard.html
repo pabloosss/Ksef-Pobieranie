@@ -10,45 +10,44 @@
     'anulowany': 'Anulowany'
 } %}
 
-<section class="simple-home">
-    <div class="home-hero">
-        <p class="eyebrow">Panel pracownika</p>
+<section class="page-title">
+    <div>
+        <p class="eyebrow">Start</p>
         <h1>Co chcesz zrobić?</h1>
-        <p>Najczęstsze akcje masz od razu pod ręką. Bez zbędnych tabel i statystyk.</p>
-    </div>
-
-    <div class="home-actions">
-        <a class="home-action main" href="{{ url_for('new_leave') }}">
-            <strong>Złóż wniosek</strong>
-            <span>Urlop, L4, odbiór dnia lub inna nieobecność.</span>
-        </a>
-        <a class="home-action" href="{{ url_for('requests_view') }}">
-            <strong>Moje wnioski</strong>
-            <span>Sprawdź status swoich zgłoszeń.</span>
-        </a>
-        <a class="home-action" href="{{ url_for('calendar_view') }}">
-            <strong>Kalendarz</strong>
-            <span>Zobacz zaplanowane nieobecności.</span>
-        </a>
+        <p>Najważniejsze akcje pracownika. Bez zbędnych tabelek.</p>
     </div>
 </section>
 
-<section class="home-grid">
-    <div class="card clear-card limit-overview">
-        <span class="card-label">Twój limit</span>
-        <div class="limit-number">{{ summary.available }}</div>
-        <p>dni dostępne do wykorzystania</p>
-        <div class="limit-mini">
-            <span>Wykorzystane: <b>{{ summary.accepted }}</b></span>
-            <span>Oczekujące: <b>{{ summary.pending }}</b></span>
+<section class="quick-grid">
+    <a class="quick-card primary" href="{{ url_for('new_leave') }}">
+        <strong>Złóż wniosek</strong>
+        <span>Urlop, L4, odbiór dnia albo inna nieobecność.</span>
+    </a>
+    <a class="quick-card" href="{{ url_for('requests_view') }}">
+        <strong>Moje wnioski</strong>
+        <span>Sprawdź status swoich zgłoszeń.</span>
+    </a>
+    <a class="quick-card" href="{{ url_for('calendar_view') }}">
+        <strong>Kalendarz</strong>
+        <span>Zobacz zaplanowane nieobecności.</span>
+    </a>
+</section>
+
+<div class="two-columns">
+    <div class="card">
+        <h2>Mój urlop</h2>
+        <div class="mini-summary">
+            <div><span>Dostępne</span><strong>{{ summary.available }}</strong></div>
+            <div><span>Wykorzystane</span><strong>{{ summary.accepted }}</strong></div>
+            <div><span>Oczekujące</span><strong>{{ summary.pending }}</strong></div>
         </div>
     </div>
 
-    <div class="card clear-card">
-        <div class="section-heading compact">
+    <div class="card">
+        <div class="section-heading">
             <div>
                 <h2>Ostatni wniosek</h2>
-                <p>Najnowsze zgłoszenie z Twojej historii.</p>
+                <p>Twoje najnowsze zgłoszenie.</p>
             </div>
             <a href="{{ url_for('requests_view') }}">Wszystkie</a>
         </div>
@@ -66,13 +65,13 @@
             {% endfor %}
         </div>
     </div>
-</section>
+</div>
 
 {% if is_manager() or is_hr() %}
-<section class="manager-strip">
-    <a href="{{ url_for('approvals') }}"><b>Do akceptacji</b><span>{{ stats.pending }} oczekujące</span></a>
-    <a href="{{ url_for('presence') }}"><b>Obecność</b><span>Widok zespołu lub firmy</span></a>
-    <a href="{{ url_for('reports') }}"><b>Raporty</b><span>Eksport i zestawienia</span></a>
+<section class="quick-grid">
+    <a class="quick-card" href="{{ url_for('approvals') }}"><strong>Do akceptacji</strong><span>{{ stats.pending }} oczekujące</span></a>
+    <a class="quick-card" href="{{ url_for('presence') }}"><strong>Obecność</strong><span>Widok zespołu lub firmy.</span></a>
+    <a class="quick-card" href="{{ url_for('reports') }}"><strong>Raporty</strong><span>Eksport i zestawienia.</span></a>
 </section>
 {% endif %}
 {% endblock %}
