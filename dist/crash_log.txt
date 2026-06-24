@@ -1,0 +1,9 @@
+======================================================================
+2026-06-24 10:15:30
+Nie udało się pobrać zaznaczonej partii.
+
+Traceback (most recent call last):
+  File "ksef_app_selenium_edge_fix.py", line 1086, in download_invoices
+  File "ksef_app_selenium_edge_fix.py", line 990, in process_pages_for_ids
+RuntimeError: Nie udało się pobrać zaznaczonej partii.
+

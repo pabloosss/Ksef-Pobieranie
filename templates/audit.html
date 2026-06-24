@@ -1,5 +1,0 @@
-{% extends "base.html" %}
-{% block content %}
-<section class="page-title"><div><p class="eyebrow">Historia</p><h1>Historia zmian</h1><p>Audyt działań w systemie.</p></div></section>
-<div class="card"><div class="table-wrapper"><table><thead><tr><th>Kto</th><th>Akcja</th><th>Obiekt</th><th>Opis</th><th>Data</th></tr></thead><tbody>{% for l in logs %}<tr><td>{{ l.actor_name or 'system' }}</td><td>{{ l.action }}</td><td>{{ l.entity_type }} #{{ l.entity_id or '—' }}</td><td>{{ l.details or '—' }}</td><td>{{ l.created_at }}</td></tr>{% else %}<tr><td colspan="5" class="empty-state">Brak historii.</td></tr>{% endfor %}</tbody></table></div></div>
-{% endblock %}
