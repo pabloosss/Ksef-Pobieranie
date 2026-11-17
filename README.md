@@ -52,6 +52,8 @@ W folderze `pobrane_fv\<data>__WSZYSTKIE_FV\`:
 - `brakujace_fv.txt` — lista niepobranych pozycji;
 - `info.txt` — podsumowanie.
 
-Nie umieszczaj dokumentów księgowych ani logów z danymi faktur w publicznym repozytorium.
+**Repozytorium jest publiczne.** Nie dodawaj dokumentów księgowych, folderu `dist/pobrane_fv`, EXE ani logów z danymi faktur do Git. Po pobraniu nowej wersji buduj EXE lokalnie przez `build_exe.bat`.
+
+W przeszłości repo zawierało pliki PDF. Usunięcie z aktualnego stanu nie kasuje ich z historii Git ani kopii zewnętrznych. Historię trzeba oczyścić oddzielnie.
 
 Autor: Paweł Ruchlicki.
