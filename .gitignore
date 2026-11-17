@@ -11,6 +11,13 @@ dist/
 *.exe
 
 # Local invoices and diagnostics
+*.pdf
+*.zip
+run_log.txt
+info.txt
+brakujace_fv.txt
+potwierdzone_fv.json
+ksef_selftest_error.txt
 pobrane_fv/
 crash_log.txt
 edge_start_error.txt
