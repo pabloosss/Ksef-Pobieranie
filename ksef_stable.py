@@ -4,6 +4,7 @@ Warstwa GUI i uruchamianie Edge pozostaja w oryginalnym KsefApp.
 Ta wersja kontroluje paginacje, pliki, ponowienia oraz bledy.
 """
 
+import json
 import os
 import re
 import shutil
@@ -63,6 +64,7 @@ class KsefStable(KsefApp):
         self._session_log_path = None
         self._first_signature = None
         self._batch_counter = 0
+        self._completed_ids = set()
         super().__init__(root)
         self.root.title("KSeF - pobieranie faktur | EMERLOG")
         self.log("[INFO] Wersja z kontrola pobranych plikow jest gotowa.")
@@ -359,16 +361,16 @@ class KsefStable(KsefApp):
         pdf_option = [
             (By.XPATH, "//*[@role='menuitem' and contains(normalize-space(.),'PDF')]"),
             (By.XPATH, "//button[normalize-space(.)='PDF']"),
-            (By.XPATH, "//*[normalize-space(.)='PDF']"),
+            (By.XPATH, "//*[self::button or self::a or @role='option' or @role='menuitem'][contains(normalize-space(.),'PDF')]"),
         ]
         zip_option = [
             (By.XPATH, "//*[@role='menuitem' and contains(normalize-space(.),'ZIP')]"),
-            (By.XPATH, "//*[normalize-space(.)='ZIP']"),
+            (By.XPATH, "//*[self::button or self::a or @role='option' or @role='menuitem'][contains(normalize-space(.),'ZIP')]"),
         ]
         if not self._click_visible(pdf_option, timeout=3):
             if not self._click_visible(zip_option, timeout=2):
                 # Niektore wersje KSeF uruchamiaja pobieranie bez osobnego menu.
-                return self.wait_for_new_download(session_dir, before, timeout=10)
+                return self.wait_for_new_download(session_dir, before, timeout=NO_FILE_SIGNAL_TIMEOUT)
         return self.wait_for_new_download(session_dir, before)
 
     @staticmethod
@@ -506,6 +508,8 @@ class KsefStable(KsefApp):
                 batch_ids = page_ids[offset:offset + MAX_BATCH]
                 completed = self._download_batch(batch_ids, session_dir)
                 processed.update(completed)
+                self._completed_ids.update(completed)
+                self._save_checkpoint(session_dir)
                 self.downloaded_var.set(str(len(processed)))
                 self.update_progress(len(processed), max(1, len(target_map)), "Pobieranie faktur")
 
@@ -520,6 +524,20 @@ class KsefStable(KsefApp):
         missing = [target_map[key] for key in target_map if key in target_ids and key not in processed]
         return processed, missing
 
+    def _save_checkpoint(self, session_dir):
+        """Aktualny stan zapisujemy po kazdej poprawnej paczce, takze przed awaria."""
+        path = os.path.join(session_dir, "potwierdzone_fv.json")
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {"updated": datetime.now().isoformat(), "ids": sorted(self._completed_ids)},
+                    handle, indent=2, ensure_ascii=False,
+                )
+            os.replace(tmp, path)
+        except OSError as exc:
+            self.log(f"[UWAGA] Nie udalo sie zapisac punktu kontrolnego: {exc}")
+
     def download_invoices(self):
         if self._busy:
             messagebox.showinfo("Pobieranie", "Pobieranie juz trwa.")
@@ -533,6 +551,8 @@ class KsefStable(KsefApp):
         manifest = []
         processed = set()
         retry_count = 0
+        self._completed_ids = set()
+        self._first_signature = None
 
         try:
             session_dir = self.create_session_folder()
@@ -572,6 +592,7 @@ class KsefStable(KsefApp):
                 self.log(f"[OK] Pobrano komplet: {len(processed)}/{len(target_ids)} FV.")
                 messagebox.showinfo("Gotowe", f"Pobrano {len(processed)} FV.\nFolder:\n{session_dir}")
         except Exception as exc:
+            processed = set(self._completed_ids)
             self.stop_loading("Blad")
             self.log(f"[BŁĄD] {exc}")
             if session_dir:
