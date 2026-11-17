@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox
 
+from selenium.common.exceptions import ElementClickInterceptedException
 from selenium.webdriver.common.by import By
 
 from ksef_app_selenium_edge_fix import (
@@ -202,7 +203,7 @@ class KsefStable(KsefApp):
             pass
         try:
             button.click()
-        except Exception:
+        except ElementClickInterceptedException:
             self.driver.execute_script("arguments[0].click();", button)
 
         end = time.monotonic() + PAGE_TIMEOUT
@@ -216,21 +217,17 @@ class KsefStable(KsefApp):
     def go_to_next_page(self):
         before = self.get_page_signature()
         button = self._enabled_nav("next")
-        if button is None and self._ksef_busy():
-            for _ in range(16):
-                self._sleep(0.5)
-                button = self._enabled_nav("next")
-                if button is not None or not self._ksef_busy():
-                    break
+        if button is None:
+            deadline = time.monotonic() + PAGE_TIMEOUT
+            while self._ksef_busy():
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("KSeF nadal ładuje listę. Nie można potwierdzić końca wyników.")
+                self._sleep(0.25)
+            button = self._enabled_nav("next")
         if button is None:
             return False
-        for attempt in range(2):
-            if self._click_and_wait_for_page(button, before):
-                return True
-            self.log(f"[UWAGA] Strona nie zmienila sie. Proba {attempt + 1}/2.")
-            button = self._enabled_nav("next")
-            if button is None:
-                break
+        if self._click_and_wait_for_page(button, before):
+            return True
         raise RuntimeError("KSeF nie przelaczyl na nastepna strone. Przerwano, aby nie pominac faktur.")
 
     def go_to_first_page(self, max_steps=None):
@@ -245,9 +242,9 @@ class KsefStable(KsefApp):
         if first is not None:
             if self._click_and_wait_for_page(first, current):
                 current = self.get_page_signature()
-                if self._first_signature and current != self._first_signature:
-                    raise RuntimeError("Przycisk pierwszej strony przeniosl w inne miejsce.")
-                return True
+                if not self._first_signature or current == self._first_signature:
+                    return True
+                self.log("[INFO] Wracam dalej do zapamiętanej pierwszej strony.")
 
         for _ in range(limit):
             button = self._enabled_nav("prev")
@@ -270,8 +267,8 @@ class KsefStable(KsefApp):
 
         while page_count < MAX_SCAN_PAGES:
             rows = self.get_current_page_rows()
-            signature = self.get_page_signature()
-            if not rows or signature == "EMPTY":
+            signature = "|".join(row["row_id"] for row in rows)
+            if not rows:
                 raise RuntimeError("KSeF nie zaladowal listy FV podczas skanowania.")
             if signature in seen_pages:
                 raise RuntimeError("Podczas skanowania wykryto powtorzenie strony.")
@@ -292,8 +289,7 @@ class KsefStable(KsefApp):
             if not self.go_to_next_page():
                 break
         else:
-            if self._enabled_nav("next") is not None:
-                raise RuntimeError(f"Lista przekracza limit {MAX_SCAN_PAGES} stron; skanowanie przerwane.")
+            raise RuntimeError(f"Lista przekracza limit {MAX_SCAN_PAGES} stron; skanowanie przerwane.")
 
         self.go_to_first_page()
         if self.get_page_signature() != self._first_signature:
@@ -560,8 +556,8 @@ class KsefStable(KsefApp):
 
         while len(seen_pages) < MAX_SCAN_PAGES:
             rows = self.get_current_page_rows()
-            signature = self.get_page_signature()
-            if not rows or signature == "EMPTY":
+            signature = "|".join(row["row_id"] for row in rows)
+            if not rows:
                 raise RuntimeError("Podczas pobierania lista KSeF nie zaladowala sie.")
             if signature in seen_pages:
                 raise RuntimeError("KSeF pokazal ponownie te sama strone podczas pobierania.")
@@ -583,8 +579,7 @@ class KsefStable(KsefApp):
             if not self.go_to_next_page():
                 break
         else:
-            if self._enabled_nav("next") is not None:
-                raise RuntimeError(f"Przekroczono limit {MAX_SCAN_PAGES} stron podczas pobierania.")
+            raise RuntimeError(f"Przekroczono limit {MAX_SCAN_PAGES} stron podczas pobierania.")
 
         missing = [target_map[key] for key in target_map if key in target_ids and key not in processed]
         return processed, missing

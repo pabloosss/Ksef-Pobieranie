@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import Mock, patch
 
 from ksef_stable import KsefStable, pdf_magic_ok, unique_destination
 
@@ -207,7 +208,7 @@ class PageNavigationTests(unittest.TestCase):
         app.found_var = type("Var", (), {"set": lambda self, x: None})()
         app.update_progress = lambda *args: None
         app.go_to_first_page = lambda: state.update(page=1)
-        app.get_page_signature = lambda: f"page{state['page']}"
+        app.get_page_signature = lambda: f"invoice-{state['page']}"
         app.get_current_page_rows = lambda: [{"row_id": f"invoice-{state['page']}", "text": f"invoice-{state['page']}"}]
         def next_page():
             if state["page"] == 61:
@@ -218,15 +219,36 @@ class PageNavigationTests(unittest.TestCase):
         result = app.scan_manifest()
         self.assertEqual(len(result), 61)
         self.assertEqual(state["page"], 1)
-        self.assertEqual(app._first_signature, "page1")
+        self.assertEqual(app._first_signature, "invoice-1")
 
     def test_failed_page_change_is_error_not_end_of_list(self):
         app = app_stub()
         app.get_page_signature = lambda: "page34"
         app._enabled_nav = lambda d: "next"
-        app._click_and_wait_for_page = lambda button, old: False
+        app._click_and_wait_for_page = Mock(return_value=False)
         with self.assertRaises(RuntimeError):
             app.go_to_next_page()
+        app._click_and_wait_for_page.assert_called_once_with("next", "page34")
+
+    def test_first_button_lands_on_tenth_page(self):
+        app = app_stub()
+        pages = iter([61, *range(10, 0, -1)])
+        app._first_signature = "1"
+        app.get_page_signature = lambda: str(next(pages))
+        app._enabled_nav = lambda direction: direction
+        app._click_and_wait_for_page = Mock(return_value=True)
+        self.assertTrue(app.go_to_first_page())
+        self.assertEqual(app._click_and_wait_for_page.call_count, 10)
+
+    def test_single_page_over_limit_is_reported(self):
+        app = app_stub()
+        app.go_to_first_page = Mock()
+        app.get_current_page_rows = Mock(return_value=[{"row_id": "A", "text": "A"}])
+        app.found_var = Mock()
+        app.update_progress = Mock()
+        app.go_to_next_page = Mock(return_value=True)
+        with patch("ksef_stable.MAX_SCAN_PAGES", 1), self.assertRaisesRegex(RuntimeError, "limit"):
+            app.scan_manifest()
 
     def test_retry_pass_does_not_skip_when_previous_total_is_large(self):
         app = app_stub()
