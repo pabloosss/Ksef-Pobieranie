@@ -27,6 +27,13 @@ W aplikacji kliknij „Start / Otwórz KSeF”, zaloguj się ręcznie, ustaw fil
 - Okno aktualizuje się podczas oczekiwania; nie można uruchomić dwóch pobrań jednocześnie.
 - Build EXE używa jednego pliku spec i uruchamia testy przed kompilacją.
 
+## Dodatkowe zabezpieczenia pobierania
+
+- **Oddzielny folder na każdą próbę:** niedokończony plik `.crdownload` po wcześniejszym błędzie nie blokuje następnej paczki. Nieudane próby nie zwiększają licznika pobranych FV.
+- **Bezpieczny zapis paczki:** pliki z ZIP są najpierw sprawdzane w folderze tymczasowym. Dopiero po przejściu kontroli trafiają do sesji. Przy błędzie zapisu program wycofuje pliki opublikowane przez tę próbę.
+- **Dokładny licznik:** po zakończeniu liczba PDF w folderze musi odpowiadać liczbie faktur potwierdzonych przez program. Rozbieżność oznacza błąd do wyjaśnienia, a nie fałszywy komunikat „gotowe”.
+- **Diagnostyka:** jeśli Windows blokuje usunięcie niedokończonego pobierania, jego osobny folder może pozostać w sesji; nie jest traktowany jako pobrana faktura.
+
 ## Testy
 
 `python -m pip install -r requirements.txt`
