@@ -39,6 +39,13 @@ if exist dist\Ksef-Pobieranie.exe del /f /q dist\Ksef-Pobieranie.exe
 if errorlevel 1 goto :err
 if not exist "dist\Ksef-Pobieranie.exe" goto :err
 
+echo [INFO] Sprawdzam zaleznosci wewnatrz EXE...
+powershell -NoProfile -Command "$p = Start-Process -FilePath '%cd%\dist\Ksef-Pobieranie.exe' -ArgumentList '--self-test' -Wait -PassThru; if ($p.ExitCode -ne 0) { exit 1 }"
+if errorlevel 1 (
+    if exist ksef_selftest_error.txt type ksef_selftest_error.txt
+    goto :err
+)
+
 echo.
 echo [OK] Kompilacja zakonczona poprawnie.
 echo %cd%\dist\Ksef-Pobieranie.exe
