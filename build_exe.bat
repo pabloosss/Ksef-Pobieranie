@@ -1,62 +1,54 @@
 @echo off
+setlocal
 cd /d "%~dp0"
 
 echo =====================================
-echo KSeF - build EXE
+echo KSeF - kompilacja stabilnej wersji EXE
 echo =====================================
-
-color 0A >nul 2>nul
 
 python --version >nul 2>nul
 if errorlevel 1 (
     py --version >nul 2>nul
     if errorlevel 1 (
-        echo [BLAD] Python nie jest zainstalowany albo nie ma go w PATH.
+        echo [BLAD] Brak Pythona w PATH.
         pause
         exit /b 1
     ) else (
-        set PY_CMD=py
+        set "PY_CMD=py"
     )
 ) else (
-    set PY_CMD=python
+    set "PY_CMD=python"
 )
-
-%PY_CMD% -m pip install --upgrade pip
-if errorlevel 1 goto :err
 
 %PY_CMD% -m pip install -r requirements.txt
 if errorlevel 1 goto :err
 
-if exist build rmdir /s /q build
-if exist dist rmdir /s /q dist
-
-%PY_CMD% -m PyInstaller ^
-  --noconfirm ^
-  --onefile ^
-  --windowed ^
-  --name Ksef-Pobieranie ^
-  ksef_app_selenium_edge_fix.py
+echo.
+echo [INFO] Kontrola bibliotek Edge / Selenium...
+%PY_CMD% -c "from selenium.webdriver.edge.webdriver import WebDriver; import ksef_stable; print('[OK] Importy dzialaja')"
 if errorlevel 1 goto :err
 
-if exist logo.png copy /Y logo.png dist\logo.png >nul
+echo.
+echo [INFO] Uruchamiam testy regresji...
+%PY_CMD% -m unittest discover -s tests -p "test_*.py" -v
+if errorlevel 1 goto :err
+
+if exist dist\Ksef-Pobieranie.exe del /f /q dist\Ksef-Pobieranie.exe
+
+%PY_CMD% -m PyInstaller --noconfirm --clean Ksef-Pobieranie.spec
+if errorlevel 1 goto :err
+if not exist "dist\Ksef-Pobieranie.exe" goto :err
 
 echo.
-echo [OK] Gotowe.
-echo FINALNY PROGRAM jest tutaj:
+echo [OK] Kompilacja zakonczona poprawnie.
 echo %cd%\dist\Ksef-Pobieranie.exe
-echo.
-echo Logo zostalo skopiowane do folderu dist.
-echo.
-
-if exist "%cd%\dist\Ksef-Pobieranie.exe" (
-    start "" explorer "%cd%\dist"
-)
-
+start "" explorer "%cd%\dist"
 pause
 exit /b 0
 
 :err
 echo.
-echo [BLAD] Build EXE nie powiodl sie.
+echo [BLAD] Zatrzymano kompilacje - sprawdz komunikat powyzej.
+echo Nie uruchamiaj starszego EXE.
 pause
 exit /b 1
