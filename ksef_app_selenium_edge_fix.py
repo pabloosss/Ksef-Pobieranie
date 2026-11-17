@@ -677,7 +677,21 @@ class KsefApp:
             if after == before:
                 break
 
+    @staticmethod
+    def _checkbox_selected(checkbox):
+        try:
+            return (
+                checkbox.is_selected()
+                or checkbox.get_attribute("aria-checked") == "true"
+                or checkbox.get_attribute("checked") is not None
+            )
+        except Exception:
+            return False
+
     def click_checkbox(self, checkbox):
+        # Nie klikamy ponownie elementu juz zaznaczonego: to by go odznaczylo.
+        if self._checkbox_selected(checkbox):
+            return True
         try:
             self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
         except Exception:
@@ -686,39 +700,21 @@ class KsefApp:
         methods = [
             lambda: checkbox.click(),
             lambda: ActionChains(self.driver).move_to_element(checkbox).click(checkbox).perform(),
-            lambda: self.driver.execute_script(
-                """
-                arguments[0].click();
-                if (arguments[0].type === 'checkbox') {
-                    arguments[0].checked = true;
-                    arguments[0].dispatchEvent(new Event('input', {bubbles:true}));
-                    arguments[0].dispatchEvent(new Event('change', {bubbles:true}));
-                }
-                if (arguments[0].getAttribute('role') === 'checkbox') {
-                    arguments[0].setAttribute('aria-checked', 'true');
-                    arguments[0].dispatchEvent(new Event('click', {bubbles:true}));
-                }
-                """,
-                checkbox,
-            ),
+            lambda: self.driver.execute_script("arguments[0].click();", checkbox),
         ]
-
         for method in methods:
             try:
                 method()
-                time.sleep(0.15)
-                if checkbox.is_selected():
-                    return True
-                aria = checkbox.get_attribute("aria-checked")
-                checked = checkbox.get_attribute("checked")
-                if aria == "true" or checked is not None:
+                time.sleep(0.10)
+                if self._checkbox_selected(checkbox):
                     return True
             except Exception:
                 pass
-
         return False
 
     def uncheck_checkbox(self, checkbox):
+        if not self._checkbox_selected(checkbox):
+            return True
         try:
             self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
         except Exception:
@@ -727,38 +723,16 @@ class KsefApp:
         methods = [
             lambda: checkbox.click(),
             lambda: ActionChains(self.driver).move_to_element(checkbox).click(checkbox).perform(),
-            lambda: self.driver.execute_script(
-                """
-                try { arguments[0].click(); } catch (e) {}
-                if (arguments[0].type === 'checkbox') {
-                    arguments[0].checked = false;
-                    arguments[0].dispatchEvent(new Event('input', {bubbles:true}));
-                    arguments[0].dispatchEvent(new Event('change', {bubbles:true}));
-                }
-                if (arguments[0].getAttribute('role') === 'checkbox') {
-                    arguments[0].setAttribute('aria-checked', 'false');
-                }
-                """,
-                checkbox,
-            ),
+            lambda: self.driver.execute_script("arguments[0].click();", checkbox),
         ]
-
         for method in methods:
             try:
                 method()
-                time.sleep(0.1)
-                aria = checkbox.get_attribute("aria-checked")
-                checked = checkbox.get_attribute("checked")
-                selected = False
-                try:
-                    selected = checkbox.is_selected()
-                except Exception:
-                    selected = False
-                if not selected and aria != "true" and checked is None:
+                time.sleep(0.08)
+                if not self._checkbox_selected(checkbox):
                     return True
             except Exception:
                 pass
-
         return False
 
     def clear_all_visible_checkboxes(self):
