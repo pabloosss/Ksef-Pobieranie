@@ -8,6 +8,9 @@ import json
 import os
 import re
 import shutil
+import sys
+import traceback
+import importlib
 import tempfile
 import time
 import zipfile
@@ -625,4 +628,19 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        # Nie uruchamia Edge. Testuje dynamiczne importy w zapakowanym EXE.
+        try:
+            for module in (
+                "selenium.webdriver.edge.webdriver",
+                "selenium.webdriver.edge.service",
+                "selenium.webdriver.edge.options",
+                "selenium.webdriver.common.selenium_manager",
+            ):
+                importlib.import_module(module)
+        except Exception:
+            with open("ksef_selftest_error.txt", "w", encoding="utf-8") as handle:
+                handle.write(traceback.format_exc())
+            sys.exit(1)
+        sys.exit(0)
     main()
