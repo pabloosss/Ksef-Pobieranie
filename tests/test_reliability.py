@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import Mock, patch
 
 from ksef_stable import KsefStable, pdf_magic_ok, unique_destination
 
@@ -79,6 +80,114 @@ class DownloadIntegrityTests(unittest.TestCase):
             self.assertFalse(app._verify_and_store(archive, folder, [ID_A]))
 
 
+class BatchIsolationTests(unittest.TestCase):
+    def test_stale_download_does_not_block_next_batch_attempt(self):
+        app = app_stub()
+        with tempfile.TemporaryDirectory() as folder:
+            # Pozostalosc poprzedniego pobrania nie moze blokowac nowej paczki.
+            stale = os.path.join(folder, "old.crdownload")
+            with open(stale, "wb") as handle:
+                handle.write(b"unfinished")
+
+            app.clear_all_visible_checkboxes = lambda: None
+            app.get_current_page_rows = lambda: [
+                {"row_id": ID_A.lower(), "checkbox": object()}
+            ]
+            app.click_checkbox = lambda checkbox: True
+            app._selected_ids = lambda: {ID_A.lower()}
+            app._save_checkpoint = lambda session: None
+            attempts = []
+
+            def download(folder_for_attempt):
+                attempts.append(folder_for_attempt)
+                self.assertNotEqual(folder_for_attempt, folder)
+                self.assertFalse(os.path.exists(os.path.join(folder_for_attempt, "old.crdownload")))
+                if len(attempts) == 1:
+                    with open(os.path.join(folder_for_attempt, "unfinished.crdownload"), "wb") as out:
+                        out.write(b"incomplete")
+                    return None
+                path = os.path.join(folder_for_attempt, f"{ID_A}.pdf")
+                with open(path, "wb") as out:
+                    out.write(PDF)
+                return path
+
+            app.try_download_selected = download
+            result = app._download_batch([ID_A.lower()], folder)
+            self.assertEqual(result, {ID_A.lower()})
+            self.assertEqual(len(attempts), 2)
+            self.assertTrue(os.path.isfile(stale))
+            self.assertTrue(os.path.isfile(os.path.join(folder, f"{ID_A}.pdf")))
+            self.assertFalse(any(name.startswith(".ksef_proba_") for name in os.listdir(folder)))
+
+    def test_failed_second_pdf_publish_rolls_back_first_file(self):
+        from unittest import mock
+
+        app = app_stub()
+        with tempfile.TemporaryDirectory() as folder:
+            archive = os.path.join(folder, "download.zip")
+            with zipfile.ZipFile(archive, "w") as zf:
+                zf.writestr(f"{ID_A}.pdf", PDF)
+                zf.writestr(f"{ID_B}.pdf", PDF)
+
+            original_replace = os.replace
+            calls = []
+
+            def fail_second(src, dst):
+                calls.append(dst)
+                if len(calls) == 2:
+                    raise OSError("simulated write error")
+                return original_replace(src, dst)
+
+            with mock.patch("ksef_stable.os.replace", side_effect=fail_second):
+                self.assertFalse(app._verify_and_store(
+                    archive, folder, [ID_A.lower(), ID_B.lower()]
+                ))
+
+            self.assertTrue(os.path.isfile(archive))
+            self.assertFalse(any(name.endswith(".pdf") for name in os.listdir(folder)))
+
+
+class CheckboxBehaviorTests(unittest.TestCase):
+    def test_selecting_same_checkbox_twice_does_not_uncheck_it(self):
+        from ksef_app_selenium_edge_fix import KsefApp
+        from unittest import mock
+
+        class Checkbox:
+            def __init__(self):
+                self.checked = False
+                self.clicks = 0
+
+            def is_selected(self):
+                return self.checked
+
+            def get_attribute(self, name):
+                if name == "checked":
+                    return "true" if self.checked else None
+                return None
+
+            def click(self):
+                self.clicks += 1
+                self.checked = not self.checked
+
+        class Driver:
+            def execute_script(self, script, checkbox):
+                # Test sprawdza sciezke normalnego klikniecia Selenium.
+                pass
+
+        app = KsefApp.__new__(KsefApp)
+        app.driver = Driver()
+        checkbox = Checkbox()
+        with mock.patch("ksef_app_selenium_edge_fix.time.sleep", return_value=None):
+            self.assertTrue(app.click_checkbox(checkbox))
+            self.assertTrue(app.click_checkbox(checkbox))
+            self.assertEqual(checkbox.clicks, 1)
+            self.assertTrue(checkbox.is_selected())
+            self.assertTrue(app.uncheck_checkbox(checkbox))
+            self.assertTrue(app.uncheck_checkbox(checkbox))
+            self.assertEqual(checkbox.clicks, 2)
+            self.assertFalse(checkbox.is_selected())
+
+
 class PageNavigationTests(unittest.TestCase):
     def test_go_to_first_page_after_sixty_one_pages(self):
         app = app_stub()
@@ -99,7 +208,7 @@ class PageNavigationTests(unittest.TestCase):
         app.found_var = type("Var", (), {"set": lambda self, x: None})()
         app.update_progress = lambda *args: None
         app.go_to_first_page = lambda: state.update(page=1)
-        app.get_page_signature = lambda: f"page{state['page']}"
+        app.get_page_signature = lambda: f"invoice-{state['page']}"
         app.get_current_page_rows = lambda: [{"row_id": f"invoice-{state['page']}", "text": f"invoice-{state['page']}"}]
         def next_page():
             if state["page"] == 61:
@@ -110,15 +219,36 @@ class PageNavigationTests(unittest.TestCase):
         result = app.scan_manifest()
         self.assertEqual(len(result), 61)
         self.assertEqual(state["page"], 1)
-        self.assertEqual(app._first_signature, "page1")
+        self.assertEqual(app._first_signature, "invoice-1")
 
     def test_failed_page_change_is_error_not_end_of_list(self):
         app = app_stub()
         app.get_page_signature = lambda: "page34"
         app._enabled_nav = lambda d: "next"
-        app._click_and_wait_for_page = lambda button, old: False
+        app._click_and_wait_for_page = Mock(return_value=False)
         with self.assertRaises(RuntimeError):
             app.go_to_next_page()
+        app._click_and_wait_for_page.assert_called_once_with("next", "page34")
+
+    def test_first_button_lands_on_tenth_page(self):
+        app = app_stub()
+        pages = iter([61, *range(10, 0, -1)])
+        app._first_signature = "1"
+        app.get_page_signature = lambda: str(next(pages))
+        app._enabled_nav = lambda direction: direction
+        app._click_and_wait_for_page = Mock(return_value=True)
+        self.assertTrue(app.go_to_first_page())
+        self.assertEqual(app._click_and_wait_for_page.call_count, 10)
+
+    def test_single_page_over_limit_is_reported(self):
+        app = app_stub()
+        app.go_to_first_page = Mock()
+        app.get_current_page_rows = Mock(return_value=[{"row_id": "A", "text": "A"}])
+        app.found_var = Mock()
+        app.update_progress = Mock()
+        app.go_to_next_page = Mock(return_value=True)
+        with patch("ksef_stable.MAX_SCAN_PAGES", 1), self.assertRaisesRegex(RuntimeError, "limit"):
+            app.scan_manifest()
 
     def test_retry_pass_does_not_skip_when_previous_total_is_large(self):
         app = app_stub()

@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox
 
+from selenium.common.exceptions import ElementClickInterceptedException
 from selenium.webdriver.common.by import By
 
 from ksef_app_selenium_edge_fix import (
@@ -202,7 +203,7 @@ class KsefStable(KsefApp):
             pass
         try:
             button.click()
-        except Exception:
+        except ElementClickInterceptedException:
             self.driver.execute_script("arguments[0].click();", button)
 
         end = time.monotonic() + PAGE_TIMEOUT
@@ -216,21 +217,17 @@ class KsefStable(KsefApp):
     def go_to_next_page(self):
         before = self.get_page_signature()
         button = self._enabled_nav("next")
-        if button is None and self._ksef_busy():
-            for _ in range(16):
-                self._sleep(0.5)
-                button = self._enabled_nav("next")
-                if button is not None or not self._ksef_busy():
-                    break
+        if button is None:
+            deadline = time.monotonic() + PAGE_TIMEOUT
+            while self._ksef_busy():
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("KSeF nadal ładuje listę. Nie można potwierdzić końca wyników.")
+                self._sleep(0.25)
+            button = self._enabled_nav("next")
         if button is None:
             return False
-        for attempt in range(2):
-            if self._click_and_wait_for_page(button, before):
-                return True
-            self.log(f"[UWAGA] Strona nie zmienila sie. Proba {attempt + 1}/2.")
-            button = self._enabled_nav("next")
-            if button is None:
-                break
+        if self._click_and_wait_for_page(button, before):
+            return True
         raise RuntimeError("KSeF nie przelaczyl na nastepna strone. Przerwano, aby nie pominac faktur.")
 
     def go_to_first_page(self, max_steps=None):
@@ -245,9 +242,9 @@ class KsefStable(KsefApp):
         if first is not None:
             if self._click_and_wait_for_page(first, current):
                 current = self.get_page_signature()
-                if self._first_signature and current != self._first_signature:
-                    raise RuntimeError("Przycisk pierwszej strony przeniosl w inne miejsce.")
-                return True
+                if not self._first_signature or current == self._first_signature:
+                    return True
+                self.log("[INFO] Wracam dalej do zapamiętanej pierwszej strony.")
 
         for _ in range(limit):
             button = self._enabled_nav("prev")
@@ -270,8 +267,8 @@ class KsefStable(KsefApp):
 
         while page_count < MAX_SCAN_PAGES:
             rows = self.get_current_page_rows()
-            signature = self.get_page_signature()
-            if not rows or signature == "EMPTY":
+            signature = "|".join(row["row_id"] for row in rows)
+            if not rows:
                 raise RuntimeError("KSeF nie zaladowal listy FV podczas skanowania.")
             if signature in seen_pages:
                 raise RuntimeError("Podczas skanowania wykryto powtorzenie strony.")
@@ -292,8 +289,7 @@ class KsefStable(KsefApp):
             if not self.go_to_next_page():
                 break
         else:
-            if self._enabled_nav("next") is not None:
-                raise RuntimeError(f"Lista przekracza limit {MAX_SCAN_PAGES} stron; skanowanie przerwane.")
+            raise RuntimeError(f"Lista przekracza limit {MAX_SCAN_PAGES} stron; skanowanie przerwane.")
 
         self.go_to_first_page()
         if self.get_page_signature() != self._first_signature:
@@ -453,7 +449,10 @@ class KsefStable(KsefApp):
                     self.log("[UWAGA] KSeF zwrocil niewlasciwy format pliku.")
                     return False
 
-                if len(staged) != len(expected_ids) or not all(pdf_magic_ok(path) for _, path in staged):
+                if len(staged) != len(expected_ids) or not all(
+                    os.path.getsize(path) <= MAX_PDF_SIZE and pdf_magic_ok(path)
+                    for _, path in staged
+                ):
                     self.log("[UWAGA] Pobrane dane nie zawieraja kompletnego PDF.")
                     return False
 
@@ -468,9 +467,22 @@ class KsefStable(KsefApp):
                 if not recognized:
                     self.log("[INFO] Nazwy PDF nie zawieraja numerow KSeF - sprawdzono format i liczbe plikow.")
 
-                for filename, src in staged:
-                    dest = unique_destination(session_dir, filename)
-                    shutil.move(src, dest)
+                # Publikujemy komplet dopiero po weryfikacji. Jezeli zapis
+                # drugiego PDF zawiedzie, usuwamy pliki z tej proby, zamiast
+                # zostawiac niepotwierdzona czesc paczki w sesji.
+                published = []
+                try:
+                    for filename, src in staged:
+                        dest = unique_destination(session_dir, filename)
+                        os.replace(src, dest)  # ten sam dysk; atomowy rename
+                        published.append(dest)
+                except OSError:
+                    for dest in published:
+                        try:
+                            os.remove(dest)
+                        except OSError:
+                            pass
+                    raise
             try:
                 os.remove(file_path)
             except OSError:
@@ -481,6 +493,9 @@ class KsefStable(KsefApp):
             return False
 
     def _download_batch(self, batch_ids, session_dir):
+        """Kazda proba dostaje osobny folder, aby stare pliki .crdownload nie
+        blokowaly nastepnych pobran ani nie byly brane za nowa paczke.
+        """
         batch_ids = list(batch_ids)
         self._batch_counter += 1
         batch_no = self._batch_counter
@@ -500,13 +515,23 @@ class KsefStable(KsefApp):
                 self.log(f"[UWAGA] Wybrane FV nie zgadzaja sie z paczka: {len(actual)}/{len(expected)}.")
             else:
                 self.log(f"[INFO] Pobieram paczke {batch_no}: {len(expected)} FV.")
-                path = self.try_download_selected(session_dir)
-                if path and self._verify_and_store(path, session_dir, batch_ids):
-                    self._completed_ids.update(expected)
-                    self._save_checkpoint(session_dir)
-                    self.clear_all_visible_checkboxes()
-                    self.log(f"[OK] Paczka {batch_no}: pobrano {len(expected)} FV.")
-                    return expected
+                # Nie pobieramy bezposrednio do folderu z potwierdzonymi fakturami.
+                # Edge moze ukonczyc poprzednia proba po uplywie timeoutu.
+                attempt_dir = tempfile.mkdtemp(prefix=".ksef_proba_", dir=session_dir)
+                try:
+                    path = self.try_download_selected(attempt_dir)
+                    if path and self._verify_and_store(path, session_dir, batch_ids):
+                        self._completed_ids.update(expected)
+                        self._save_checkpoint(session_dir)
+                        self.clear_all_visible_checkboxes()
+                        self.log(f"[OK] Paczka {batch_no}: pobrano {len(expected)} FV.")
+                        return expected
+                finally:
+                    # Katalog ma wlasna nazwe dla kazdej proby. Gdy Edge nadal
+                    # zapisuje plik, Windows moze chwilowo blokowac jego usuniecie.
+                    shutil.rmtree(attempt_dir, ignore_errors=True)
+                    if os.path.exists(attempt_dir):
+                        self.log("[UWAGA] Pozostal katalog niedokonczonego pobierania; nie bedzie liczony jako FV.")
                 self.log(f"[UWAGA] Paczka {batch_no} nie powiodla sie.")
 
             self.clear_all_visible_checkboxes()
@@ -531,8 +556,8 @@ class KsefStable(KsefApp):
 
         while len(seen_pages) < MAX_SCAN_PAGES:
             rows = self.get_current_page_rows()
-            signature = self.get_page_signature()
-            if not rows or signature == "EMPTY":
+            signature = "|".join(row["row_id"] for row in rows)
+            if not rows:
                 raise RuntimeError("Podczas pobierania lista KSeF nie zaladowala sie.")
             if signature in seen_pages:
                 raise RuntimeError("KSeF pokazal ponownie te sama strone podczas pobierania.")
@@ -554,8 +579,7 @@ class KsefStable(KsefApp):
             if not self.go_to_next_page():
                 break
         else:
-            if self._enabled_nav("next") is not None:
-                raise RuntimeError(f"Przekroczono limit {MAX_SCAN_PAGES} stron podczas pobierania.")
+            raise RuntimeError(f"Przekroczono limit {MAX_SCAN_PAGES} stron podczas pobierania.")
 
         missing = [target_map[key] for key in target_map if key in target_ids and key not in processed]
         return processed, missing
@@ -614,8 +638,11 @@ class KsefStable(KsefApp):
             pdf_count = sum(1 for filename in os.listdir(session_dir) if filename.lower().endswith(".pdf"))
             self.write_session_info(session_dir, len(target_ids), len(processed), retry_count, len(missing))
             self.log(f"[INFO] Plikow PDF na dysku: {pdf_count}, potwierdzonych FV: {len(processed)}.")
-            if pdf_count < len(processed):
-                raise RuntimeError("Liczba zapisanych PDF jest mniejsza niz liczba potwierdzonych FV.")
+            if pdf_count != len(processed):
+                raise RuntimeError(
+                    f"Niezgodnosc plikow: {pdf_count} PDF, {len(processed)} potwierdzonych FV. "
+                    "Sprawdz folder i run_log.txt."
+                )
             if missing:
                 report = self.save_missing_report(session_dir, missing)
                 self.stop_loading("Pobieranie zakonczone z brakami")

@@ -27,6 +27,14 @@ W aplikacji kliknij „Start / Otwórz KSeF”, zaloguj się ręcznie, ustaw fil
 - Okno aktualizuje się podczas oczekiwania; nie można uruchomić dwóch pobrań jednocześnie.
 - Build EXE używa jednego pliku spec i uruchamia testy przed kompilacją.
 
+## Dodatkowe zabezpieczenia pobierania
+
+- **Oddzielny folder na każdą próbę:** niedokończony plik `.crdownload` po wcześniejszym błędzie nie blokuje następnej paczki. Nieudane próby nie zwiększają licznika pobranych FV.
+- **Bezpieczny zapis paczki:** pliki z ZIP są najpierw sprawdzane w folderze tymczasowym. Dopiero po przejściu kontroli trafiają do sesji. Przy błędzie zapisu program wycofuje pliki opublikowane przez tę próbę.
+- **Checkboxy bez podwójnych kliknięć:** przed zaznaczeniem lub odznaczeniem program sprawdza aktualny stan pola; nie ustawia sztucznie właściwości HTML ani nie wysyła dodatkowych kliknięć.
+- **Dokładny licznik:** po zakończeniu liczba PDF w folderze musi odpowiadać liczbie faktur potwierdzonych przez program. Rozbieżność oznacza błąd do wyjaśnienia, a nie fałszywy komunikat „gotowe”.
+- **Diagnostyka:** jeśli Windows blokuje usunięcie niedokończonego pobierania, jego osobny folder może pozostać w sesji; nie jest traktowany jako pobrana faktura.
+
 ## Testy
 
 `python -m pip install -r requirements.txt`
@@ -44,6 +52,8 @@ W folderze `pobrane_fv\<data>__WSZYSTKIE_FV\`:
 - `brakujace_fv.txt` — lista niepobranych pozycji;
 - `info.txt` — podsumowanie.
 
-Nie umieszczaj dokumentów księgowych ani logów z danymi faktur w publicznym repozytorium.
+**Repozytorium jest publiczne.** Nie dodawaj dokumentów księgowych, folderu `dist/pobrane_fv`, EXE ani logów z danymi faktur do Git. Po pobraniu nowej wersji buduj EXE lokalnie przez `build_exe.bat`.
+
+W przeszłości repo zawierało pliki PDF. Usunięcie z aktualnego stanu nie kasuje ich z historii Git ani kopii zewnętrznych. Historię trzeba oczyścić oddzielnie.
 
 Autor: Paweł Ruchlicki.
