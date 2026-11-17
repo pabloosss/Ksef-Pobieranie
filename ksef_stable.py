@@ -95,6 +95,31 @@ class KsefStable(KsefApp):
                     self._pumping = False
             time.sleep(min(0.08, max(0.01, end - time.monotonic())))
 
+    def _ksef_busy(self):
+        for selector in (
+            "mat-spinner", "mat-progress-spinner", ".mat-mdc-progress-spinner",
+            "[aria-busy='true']", "[role='progressbar']", ".loading-spinner",
+        ):
+            try:
+                if any(el.is_displayed() for el in self.driver.find_elements(By.CSS_SELECTOR, selector)):
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def create_session_folder(self):
+        """Nowa sesja dostaje osobny folder nawet przy szybkim ponowieniu."""
+        base = datetime.now().strftime("%Y-%m-%d__%H-%M-%S")
+        for suffix in range(100):
+            label = f"{base}__WSZYSTKIE_FV" + (f"__{suffix + 1}" if suffix else "")
+            folder = os.path.join(self.base_download_dir, label)
+            try:
+                os.mkdir(folder)
+                return folder
+            except FileExistsError:
+                continue
+        raise RuntimeError("Nie mozna utworzyc nowego folderu sesji.")
+
     def extract_item_key(self, text):
         text = self.normalize_text(text)
         match = KSEF_ID_RE.search(text)
@@ -191,6 +216,12 @@ class KsefStable(KsefApp):
     def go_to_next_page(self):
         before = self.get_page_signature()
         button = self._enabled_nav("next")
+        if button is None and self._ksef_busy():
+            for _ in range(16):
+                self._sleep(0.5)
+                button = self._enabled_nav("next")
+                if button is not None or not self._ksef_busy():
+                    break
         if button is None:
             return False
         for attempt in range(2):
@@ -308,7 +339,7 @@ class KsefStable(KsefApp):
             if elapsed - last_notice >= 15:
                 last_notice = elapsed
                 self.set_step(f"Czekam na plik z KSeF ({elapsed} s)")
-            if elapsed >= NO_FILE_SIGNAL_TIMEOUT and not had_signal:
+            if elapsed >= NO_FILE_SIGNAL_TIMEOUT and not had_signal and not self._ksef_busy():
                 self.log(f"[UWAGA] Brak pliku przez {elapsed} s. Ponowie pobieranie.")
                 return None
             self._sleep(0.25)
@@ -471,6 +502,8 @@ class KsefStable(KsefApp):
                 self.log(f"[INFO] Pobieram paczke {batch_no}: {len(expected)} FV.")
                 path = self.try_download_selected(session_dir)
                 if path and self._verify_and_store(path, session_dir, batch_ids):
+                    self._completed_ids.update(expected)
+                    self._save_checkpoint(session_dir)
                     self.clear_all_visible_checkboxes()
                     self.log(f"[OK] Paczka {batch_no}: pobrano {len(expected)} FV.")
                     return expected
