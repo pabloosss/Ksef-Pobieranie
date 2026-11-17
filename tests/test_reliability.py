@@ -146,6 +146,47 @@ class BatchIsolationTests(unittest.TestCase):
             self.assertFalse(any(name.endswith(".pdf") for name in os.listdir(folder)))
 
 
+class CheckboxBehaviorTests(unittest.TestCase):
+    def test_selecting_same_checkbox_twice_does_not_uncheck_it(self):
+        from ksef_app_selenium_edge_fix import KsefApp
+        from unittest import mock
+
+        class Checkbox:
+            def __init__(self):
+                self.checked = False
+                self.clicks = 0
+
+            def is_selected(self):
+                return self.checked
+
+            def get_attribute(self, name):
+                if name == "checked":
+                    return "true" if self.checked else None
+                return None
+
+            def click(self):
+                self.clicks += 1
+                self.checked = not self.checked
+
+        class Driver:
+            def execute_script(self, script, checkbox):
+                # Test sprawdza sciezke normalnego klikniecia Selenium.
+                pass
+
+        app = KsefApp.__new__(KsefApp)
+        app.driver = Driver()
+        checkbox = Checkbox()
+        with mock.patch("ksef_app_selenium_edge_fix.time.sleep", return_value=None):
+            self.assertTrue(app.click_checkbox(checkbox))
+            self.assertTrue(app.click_checkbox(checkbox))
+            self.assertEqual(checkbox.clicks, 1)
+            self.assertTrue(checkbox.is_selected())
+            self.assertTrue(app.uncheck_checkbox(checkbox))
+            self.assertTrue(app.uncheck_checkbox(checkbox))
+            self.assertEqual(checkbox.clicks, 2)
+            self.assertFalse(checkbox.is_selected())
+
+
 class PageNavigationTests(unittest.TestCase):
     def test_go_to_first_page_after_sixty_one_pages(self):
         app = app_stub()
