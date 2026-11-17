@@ -40,3 +40,11 @@ jobs:
       - run: python -m PyInstaller --noconfirm --clean Ksef-Pobieranie.spec
       - run: if (!(Test-Path "dist/Ksef-Pobieranie.exe")) { throw "Missing EXE" }
         shell: pwsh
+      - name: Smoke test bundled Selenium Edge modules
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath ".\dist\Ksef-Pobieranie.exe" -ArgumentList "--self-test" -PassThru -Wait
+          if ($p.ExitCode -ne 0) {
+            if (Test-Path "ksef_selftest_error.txt") { Get-Content "ksef_selftest_error.txt" }
+            throw "Bundled Selenium Edge self-test failed"
+          }
