@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# PyInstaller / Windows outputs
+build/
+dist/
+*.exe
+
+# Local invoices and diagnostics
+pobrane_fv/
+crash_log.txt
+edge_start_error.txt
+*.crdownload
+*.part
