@@ -453,7 +453,10 @@ class KsefStable(KsefApp):
                     self.log("[UWAGA] KSeF zwrocil niewlasciwy format pliku.")
                     return False
 
-                if len(staged) != len(expected_ids) or not all(pdf_magic_ok(path) for _, path in staged):
+                if len(staged) != len(expected_ids) or not all(
+                    os.path.getsize(path) <= MAX_PDF_SIZE and pdf_magic_ok(path)
+                    for _, path in staged
+                ):
                     self.log("[UWAGA] Pobrane dane nie zawieraja kompletnego PDF.")
                     return False
 
@@ -468,9 +471,22 @@ class KsefStable(KsefApp):
                 if not recognized:
                     self.log("[INFO] Nazwy PDF nie zawieraja numerow KSeF - sprawdzono format i liczbe plikow.")
 
-                for filename, src in staged:
-                    dest = unique_destination(session_dir, filename)
-                    shutil.move(src, dest)
+                # Publikujemy komplet dopiero po weryfikacji. Jezeli zapis
+                # drugiego PDF zawiedzie, usuwamy pliki z tej proby, zamiast
+                # zostawiac niepotwierdzona czesc paczki w sesji.
+                published = []
+                try:
+                    for filename, src in staged:
+                        dest = unique_destination(session_dir, filename)
+                        os.replace(src, dest)  # ten sam dysk; atomowy rename
+                        published.append(dest)
+                except OSError:
+                    for dest in published:
+                        try:
+                            os.remove(dest)
+                        except OSError:
+                            pass
+                    raise
             try:
                 os.remove(file_path)
             except OSError:
@@ -481,6 +497,9 @@ class KsefStable(KsefApp):
             return False
 
     def _download_batch(self, batch_ids, session_dir):
+        """Kazda proba dostaje osobny folder, aby stare pliki .crdownload nie
+        blokowaly nastepnych pobran ani nie byly brane za nowa paczke.
+        """
         batch_ids = list(batch_ids)
         self._batch_counter += 1
         batch_no = self._batch_counter
@@ -500,13 +519,23 @@ class KsefStable(KsefApp):
                 self.log(f"[UWAGA] Wybrane FV nie zgadzaja sie z paczka: {len(actual)}/{len(expected)}.")
             else:
                 self.log(f"[INFO] Pobieram paczke {batch_no}: {len(expected)} FV.")
-                path = self.try_download_selected(session_dir)
-                if path and self._verify_and_store(path, session_dir, batch_ids):
-                    self._completed_ids.update(expected)
-                    self._save_checkpoint(session_dir)
-                    self.clear_all_visible_checkboxes()
-                    self.log(f"[OK] Paczka {batch_no}: pobrano {len(expected)} FV.")
-                    return expected
+                # Nie pobieramy bezposrednio do folderu z potwierdzonymi fakturami.
+                # Edge moze ukonczyc poprzednia proba po uplywie timeoutu.
+                attempt_dir = tempfile.mkdtemp(prefix=".ksef_proba_", dir=session_dir)
+                try:
+                    path = self.try_download_selected(attempt_dir)
+                    if path and self._verify_and_store(path, session_dir, batch_ids):
+                        self._completed_ids.update(expected)
+                        self._save_checkpoint(session_dir)
+                        self.clear_all_visible_checkboxes()
+                        self.log(f"[OK] Paczka {batch_no}: pobrano {len(expected)} FV.")
+                        return expected
+                finally:
+                    # Katalog ma wlasna nazwe dla kazdej proby. Gdy Edge nadal
+                    # zapisuje plik, Windows moze chwilowo blokowac jego usuniecie.
+                    shutil.rmtree(attempt_dir, ignore_errors=True)
+                    if os.path.exists(attempt_dir):
+                        self.log("[UWAGA] Pozostal katalog niedokonczonego pobierania; nie bedzie liczony jako FV.")
                 self.log(f"[UWAGA] Paczka {batch_no} nie powiodla sie.")
 
             self.clear_all_visible_checkboxes()
@@ -614,8 +643,11 @@ class KsefStable(KsefApp):
             pdf_count = sum(1 for filename in os.listdir(session_dir) if filename.lower().endswith(".pdf"))
             self.write_session_info(session_dir, len(target_ids), len(processed), retry_count, len(missing))
             self.log(f"[INFO] Plikow PDF na dysku: {pdf_count}, potwierdzonych FV: {len(processed)}.")
-            if pdf_count < len(processed):
-                raise RuntimeError("Liczba zapisanych PDF jest mniejsza niz liczba potwierdzonych FV.")
+            if pdf_count != len(processed):
+                raise RuntimeError(
+                    f"Niezgodnosc plikow: {pdf_count} PDF, {len(processed)} potwierdzonych FV. "
+                    "Sprawdz folder i run_log.txt."
+                )
             if missing:
                 report = self.save_missing_report(session_dir, missing)
                 self.stop_loading("Pobieranie zakonczone z brakami")
