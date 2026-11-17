@@ -79,6 +79,73 @@ class DownloadIntegrityTests(unittest.TestCase):
             self.assertFalse(app._verify_and_store(archive, folder, [ID_A]))
 
 
+class BatchIsolationTests(unittest.TestCase):
+    def test_stale_download_does_not_block_next_batch_attempt(self):
+        app = app_stub()
+        with tempfile.TemporaryDirectory() as folder:
+            # Pozostalosc poprzedniego pobrania nie moze blokowac nowej paczki.
+            stale = os.path.join(folder, "old.crdownload")
+            with open(stale, "wb") as handle:
+                handle.write(b"unfinished")
+
+            app.clear_all_visible_checkboxes = lambda: None
+            app.get_current_page_rows = lambda: [
+                {"row_id": ID_A.lower(), "checkbox": object()}
+            ]
+            app.click_checkbox = lambda checkbox: True
+            app._selected_ids = lambda: {ID_A.lower()}
+            app._save_checkpoint = lambda session: None
+            attempts = []
+
+            def download(folder_for_attempt):
+                attempts.append(folder_for_attempt)
+                self.assertNotEqual(folder_for_attempt, folder)
+                self.assertFalse(os.path.exists(os.path.join(folder_for_attempt, "old.crdownload")))
+                if len(attempts) == 1:
+                    with open(os.path.join(folder_for_attempt, "unfinished.crdownload"), "wb") as out:
+                        out.write(b"incomplete")
+                    return None
+                path = os.path.join(folder_for_attempt, f"{ID_A}.pdf")
+                with open(path, "wb") as out:
+                    out.write(PDF)
+                return path
+
+            app.try_download_selected = download
+            result = app._download_batch([ID_A.lower()], folder)
+            self.assertEqual(result, {ID_A.lower()})
+            self.assertEqual(len(attempts), 2)
+            self.assertTrue(os.path.isfile(stale))
+            self.assertTrue(os.path.isfile(os.path.join(folder, f"{ID_A}.pdf")))
+            self.assertFalse(any(name.startswith(".ksef_proba_") for name in os.listdir(folder)))
+
+    def test_failed_second_pdf_publish_rolls_back_first_file(self):
+        from unittest import mock
+
+        app = app_stub()
+        with tempfile.TemporaryDirectory() as folder:
+            archive = os.path.join(folder, "download.zip")
+            with zipfile.ZipFile(archive, "w") as zf:
+                zf.writestr(f"{ID_A}.pdf", PDF)
+                zf.writestr(f"{ID_B}.pdf", PDF)
+
+            original_replace = os.replace
+            calls = []
+
+            def fail_second(src, dst):
+                calls.append(dst)
+                if len(calls) == 2:
+                    raise OSError("simulated write error")
+                return original_replace(src, dst)
+
+            with mock.patch("ksef_stable.os.replace", side_effect=fail_second):
+                self.assertFalse(app._verify_and_store(
+                    archive, folder, [ID_A.lower(), ID_B.lower()]
+                ))
+
+            self.assertTrue(os.path.isfile(archive))
+            self.assertFalse(any(name.endswith(".pdf") for name in os.listdir(folder)))
+
+
 class PageNavigationTests(unittest.TestCase):
     def test_go_to_first_page_after_sixty_one_pages(self):
         app = app_stub()
